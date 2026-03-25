@@ -8,9 +8,39 @@ class DocumentTools:
     Toolset for generating DOCX documents
     """
 
+    # 🔥 NEW: Markdown → DOCX formatter
+    def add_formatted_paragraph(self, doc, text):
+        paragraph = doc.add_paragraph()
+        i = 0
+
+        while i < len(text):
+            # Bold (**text**)
+            if text[i:i+2] == "**":
+                i += 2
+                start = i
+                while i < len(text) and text[i:i+2] != "**":
+                    i += 1
+                run = paragraph.add_run(text[start:i])
+                run.bold = True
+                i += 2
+
+            # Italic (*text*)
+            elif text[i] == "*":
+                i += 1
+                start = i
+                while i < len(text) and text[i] != "*":
+                    i += 1
+                run = paragraph.add_run(text[start:i])
+                run.italic = True
+                i += 1
+
+            else:
+                paragraph.add_run(text[i])
+                i += 1
+
     def generate_docx(self, title: str, content: str, output_file: str = "output.docx"):
         """
-        Create a basic DOCX file with title + paragraphs
+        Create DOCX with formatted text (bold/italic supported)
         """
 
         doc = Document()
@@ -18,10 +48,10 @@ class DocumentTools:
         # Title
         doc.add_heading(title, 0)
 
-        # Content
+        # Content (UPDATED)
         for line in content.split("\n"):
             if line.strip():
-                doc.add_paragraph(line)
+                self.add_formatted_paragraph(doc, line)
 
         doc.save(output_file)
 
@@ -32,18 +62,25 @@ class DocumentTools:
 
     def generate_docx_with_chart(self, title: str, content: str, data: list, output_file: str = "output.docx"):
         """
-        Create DOCX with embedded chart
-        data = [("Jan", 10), ("Feb", 20)]
+        Create DOCX with embedded chart + formatted text
         """
 
         chart_path = "chart.png"
 
-        # Create chart
+        # Choose chart type
+        chart_type = self.choose_chart_type(data)
+
         labels = [d[0] for d in data]
         values = [d[1] for d in data]
 
         plt.figure()
-        plt.bar(labels, values)
+
+        # 🔥 Use selected chart type
+        if chart_type == "pie":
+            plt.pie(values, labels=labels, autopct='%1.1f%%')
+        else:
+            plt.bar(labels, values)
+
         plt.title("Generated Chart")
         plt.savefig(chart_path)
         plt.close()
@@ -54,7 +91,7 @@ class DocumentTools:
 
         for line in content.split("\n"):
             if line.strip():
-                doc.add_paragraph(line)
+                self.add_formatted_paragraph(doc, line)
 
         # Add chart image
         if os.path.exists(chart_path):
