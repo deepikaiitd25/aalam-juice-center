@@ -1,10 +1,10 @@
 services:
-  a2a-compliance-checker:
+  agent-pptx:
     build: .
-    container_name: a2a-compliance-checker
+    container_name: agent-pptx
     environment:
       - MONGO_URL=mongodb://agents-mongo:27017
-      - DB_NAME=a2a-compliance-checker
+      - DB_NAME=agent-pptx
     stdin_open: true
     ports:
       - "5000"
