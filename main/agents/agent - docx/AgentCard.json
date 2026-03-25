@@ -1,71 +1,44 @@
 {
-  "protocolVersion": "0.2.9",
-  "name": "Compliance Checker Agent",
-  "description": "An agent that analyzes documents for policy violations and compliance issues.",
-  "url": "http://localhost:10008/",
-  "agentFramework": "langchain",
-  "preferredTransport": "JSONRPC",
-  "provider": {
-    "organization": "Nasiko AI Projects",
-    "url": "https://github.com/ashishsharma/nasiko"
-  },
-  "iconUrl": "http://localhost:10008/icon.png",
-  "version": "1.0.0",
-  "documentationUrl": "http://localhost:10008/docs",
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": false,
-    "stateTransitionHistory": true,
-    "chat_agent": false
-  },
-  "securitySchemes": {},
-  "security": [],
-  "defaultInputModes": [
-    "text/plain"
-  ],
-  "defaultOutputModes": [
-    "text/plain"
-  ],
+  "agent_name": "docx-generator-agent",
+  "description": "An AI agent that converts natural language input into structured and formatted .docx documents",
+
+  "container_name": "docx_generator_container",
+
   "skills": [
     {
-      "id": "check-compliance",
-      "name": "Check Compliance",
-      "description": "Check document for policy compliance.",
+      "id": "docx_generation",
+      "name": "DOCX Document Generation",
+      "description": "Generates Microsoft Word (.docx) documents with headings, paragraphs, lists, and embedded charts based on user input",
+
       "tags": [
-        "compliance",
-        "policy",
-        "document-analysis"
+        "ai",
+        "docx",
+        "word",
+        "documents",
+        "report",
+        "automation"
       ],
+
       "examples": [
-        "Check this document for policy compliance",
-        "Does this email violate any policies?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
-      ]
-    },
-    {
-      "id": "analyze-policy",
-      "name": "Analyze Policy",
-      "description": "Answer questions about policies.",
-      "tags": [
-        "policy",
-        "question-answering"
-      ],
-      "examples": [
-        "What are the encryption requirements for file transfers?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
+        "Create a report on Artificial Intelligence",
+        "Generate a project document on climate change",
+        "Make a structured document for business proposal",
+        "Convert my notes into a formatted Word document"
       ]
     }
   ],
-  "supportsAuthenticatedExtendedCard": false,
-  "signatures": []
+
+  "capabilities": {
+    "input": "natural language text",
+    "output": ".docx file",
+    "features": [
+      "automatic document structuring",
+      "heading and paragraph formatting",
+      "bullet and numbered lists",
+      "basic chart insertion",
+      "clean professional layout"
+    ]
+  },
+
+  "system_prompt": "You are an AI agent that generates structured .docx documents. Understand the user's request, organize the content into sections such as title, headings, and paragraphs, and produce clear, well-formatted document content suitable for conversion into a Word file. Include lists and structured formatting wherever appropriate."
 }
