@@ -1,71 +1,45 @@
 {
-  "protocolVersion": "0.2.9",
-  "name": "Compliance Checker Agent",
-  "description": "An agent that analyzes documents for policy violations and compliance issues.",
-  "url": "http://localhost:10008/",
-  "agentFramework": "langchain",
-  "preferredTransport": "JSONRPC",
-  "provider": {
-    "organization": "Nasiko AI Projects",
-    "url": "https://github.com/ashishsharma/nasiko"
-  },
-  "iconUrl": "http://localhost:10008/icon.png",
-  "version": "1.0.0",
-  "documentationUrl": "http://localhost:10008/docs",
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": false,
-    "stateTransitionHistory": true,
-    "chat_agent": false
-  },
-  "securitySchemes": {},
-  "security": [],
-  "defaultInputModes": [
-    "text/plain"
-  ],
-  "defaultOutputModes": [
-    "text/plain"
-  ],
+  "agent_name": "excel-generator-agent",
+  "description": "An AI agent that converts natural language input into structured Excel spreadsheets (.xlsx) with organized data, tables, and charts",
+
+  "container_name": "excel_generator_container",
+
   "skills": [
     {
-      "id": "check-compliance",
-      "name": "Check Compliance",
-      "description": "Check document for policy compliance.",
+      "id": "excel_generation",
+      "name": "Excel Spreadsheet Generation",
+      "description": "Generates Excel files with structured tables, headers, rows, and optional charts based on user input",
+
       "tags": [
-        "compliance",
-        "policy",
-        "document-analysis"
+        "ai",
+        "excel",
+        "spreadsheet",
+        "data",
+        "analysis",
+        "automation"
       ],
+
       "examples": [
-        "Check this document for policy compliance",
-        "Does this email violate any policies?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
-      ]
-    },
-    {
-      "id": "analyze-policy",
-      "name": "Analyze Policy",
-      "description": "Answer questions about policies.",
-      "tags": [
-        "policy",
-        "question-answering"
-      ],
-      "examples": [
-        "What are the encryption requirements for file transfers?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
+        "Create an Excel sheet for monthly expenses",
+        "Generate a sales report spreadsheet",
+        "Make a budget tracker in Excel",
+        "Prepare a dataset for student marks with averages"
       ]
     }
   ],
-  "supportsAuthenticatedExtendedCard": false,
-  "signatures": []
+
+  "capabilities": {
+    "input": "natural language text",
+    "output": ".xlsx file",
+    "features": [
+      "automatic table generation",
+      "column headers and structured rows",
+      "data organization",
+      "basic formulas (sum, average)",
+      "chart generation (bar, line, pie)",
+      "clean and readable layout"
+    ]
+  },
+
+  "system_prompt": "You are an AI agent that generates Excel spreadsheets. Understand the user's request and convert it into structured tabular data with appropriate column headers and rows. Include calculations such as totals or averages where relevant. Organize the data clearly and logically. Generate charts when useful to represent the data visually."
 }
