@@ -1,95 +1,20 @@
 {
-  "protocolVersion": "0.2.9",
-  "name": "Compliance Checker Agent",
-  "description": "An agent that analyzes documents for policy violations and compliance issues.",
-  "url": "http://localhost:10008/",
-  "preferredTransport": "JSONRPC",
-  "provider": {
-    "organization": "Nasiko AI Projects",
-    "url": "https://github.com/ashishsharma/nasiko"
-  },
-  "iconUrl": "http://localhost:10008/icon.png",
-  "version": "1.0.0",
-  "documentationUrl": "http://localhost:10008/docs",
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": false,
-    "stateTransitionHistory": true,
-    "chat_agent": false
-  },
-  "securitySchemes": {},
-  "security": [],
-  "defaultInputModes": [
-    "text/plain"
-  ],
-  "defaultOutputModes": [
-    "text/plain"
-  ],
+  "agent_name": "juice",
+  "agent_description": "An AI agent that generates structured documents like PPT, PDF, and Excel from natural language input",
+  "agent_container_name": "doc_gen_container",
+
   "skills": [
     {
-      "id": "compliance_checking",
-      "name": "Compliance Checking",
-      "description": "Analyze documents for policy violations and compliance issues.",
-      "tags": [
-        "compliance",
-        "policy",
-        "document-analysis",
-        "regulations"
-      ],
+      "id": "document_generation",
+      "name": "Document Generation",
+      "description": "Creates complete formatted documents such as presentations, reports, and spreadsheets based on user input",
+      "tags": ["ai", "documents", "ppt", "pdf", "excel", "automation"],
       "examples": [
-        "Check this document for policy compliance",
-        "Does this email violate any policies?",
-        "Analyze this expense report for compliance issues",
-        "What are the encryption requirements for file transfers?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "text"
-      ]
-    },
-    {
-      "id": "check-compliance",
-      "name": "Check Compliance",
-      "description": "Check document for policy compliance.",
-      "tags": [
-        "compliance",
-        "document",
-        "policy"
-      ],
-      "examples": [
-        "Check this document for compliance issues.",
-        "Is this report compliant with company policies?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
-      ]
-    },
-    {
-      "id": "analyze-policy",
-      "name": "Analyze Policy",
-      "description": "Answer questions about policies.",
-      "tags": [
-        "policy",
-        "questions",
-        "analysis"
-      ],
-      "examples": [
-        "What are the data retention policies?",
-        "Explain the policy on remote work."
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
+        "Create a PowerPoint on Artificial Intelligence",
+        "Generate a project report on climate change",
+        "Make an Excel sheet for monthly expenses",
+        "Prepare slides for a business pitch"
       ]
     }
-  ],
-  "supportsAuthenticatedExtendedCard": false,
-  "signatures": []
+  ]
 }
