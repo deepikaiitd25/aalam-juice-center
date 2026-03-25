@@ -1,71 +1,45 @@
 {
-  "protocolVersion": "0.2.9",
-  "name": "Compliance Checker Agent",
-  "description": "An agent that analyzes documents for policy violations and compliance issues.",
-  "url": "http://localhost:10008/",
-  "agentFramework": "langchain",
-  "preferredTransport": "JSONRPC",
-  "provider": {
-    "organization": "Nasiko AI Projects",
-    "url": "https://github.com/ashishsharma/nasiko"
-  },
-  "iconUrl": "http://localhost:10008/icon.png",
-  "version": "1.0.0",
-  "documentationUrl": "http://localhost:10008/docs",
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": false,
-    "stateTransitionHistory": true,
-    "chat_agent": false
-  },
-  "securitySchemes": {},
-  "security": [],
-  "defaultInputModes": [
-    "text/plain"
-  ],
-  "defaultOutputModes": [
-    "text/plain"
-  ],
+  "agent_name": "pptx-generator-agent",
+  "description": "An AI agent that converts natural language input into structured and visually organized PowerPoint presentations (.pptx)",
+
+  "container_name": "pptx_generator_container",
+
   "skills": [
     {
-      "id": "check-compliance",
-      "name": "Check Compliance",
-      "description": "Check document for policy compliance.",
+      "id": "pptx_generation",
+      "name": "PPTX Presentation Generation",
+      "description": "Generates PowerPoint presentations with multiple slides, headings, bullet points, and optional charts based on user input",
+
       "tags": [
-        "compliance",
-        "policy",
-        "document-analysis"
+        "ai",
+        "ppt",
+        "presentation",
+        "slides",
+        "powerpoint",
+        "automation"
       ],
+
       "examples": [
-        "Check this document for policy compliance",
-        "Does this email violate any policies?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
-      ]
-    },
-    {
-      "id": "analyze-policy",
-      "name": "Analyze Policy",
-      "description": "Answer questions about policies.",
-      "tags": [
-        "policy",
-        "question-answering"
-      ],
-      "examples": [
-        "What are the encryption requirements for file transfers?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
+        "Create a presentation on Artificial Intelligence",
+        "Make slides for a business pitch",
+        "Generate a PPT on climate change",
+        "Prepare a classroom presentation on machine learning"
       ]
     }
   ],
-  "supportsAuthenticatedExtendedCard": false,
-  "signatures": []
+
+  "capabilities": {
+    "input": "natural language text",
+    "output": ".pptx file",
+    "features": [
+      "automatic slide generation",
+      "title and content slides",
+      "bullet point formatting",
+      "logical slide flow",
+      "basic chart inclusion",
+      "clean and professional layout"
+    ]
+  },
+
+  "system_prompt": "You are an AI agent that generates PowerPoint presentations. Understand the user's request, break the topic into logical sections, and create multiple slides including a title slide and content slides. Each slide should have a clear heading and concise bullet points. Maintain a professional structure and ensure the content flows logically from introduction to conclusion. Include charts when relevant."
 }

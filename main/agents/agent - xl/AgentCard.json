@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "protocolVersion": "0.2.9",
   "name": "Excel Generation Agent",
   "description": "An agent that generates structured .xlsx spreadsheets based on natural language briefs.",
@@ -35,8 +36,30 @@
         "excel",
         "spreadsheet",
         "document-generation"
+=======
+  "agent_name": "excel-generator-agent",
+  "description": "An AI agent that converts natural language input into structured Excel spreadsheets (.xlsx) with organized data, tables, and charts",
+
+  "container_name": "excel_generator_container",
+
+  "skills": [
+    {
+      "id": "excel_generation",
+      "name": "Excel Spreadsheet Generation",
+      "description": "Generates Excel files with structured tables, headers, rows, and optional charts based on user input",
+
+      "tags": [
+        "ai",
+        "excel",
+        "spreadsheet",
+        "data",
+        "analysis",
+        "automation"
+>>>>>>> 213d32e29bd0816255ac04c18fe4fd0820cc2d18
       ],
+
       "examples": [
+<<<<<<< HEAD
         "Build a sales performance tracker for Q1",
         "Create a spreadsheet with columns for rep name, deals closed, revenue, and quota attainment"
       ],
@@ -45,9 +68,28 @@
       ],
       "outputModes": [
         "application/json"
+=======
+        "Create an Excel sheet for monthly expenses",
+        "Generate a sales report spreadsheet",
+        "Make a budget tracker in Excel",
+        "Prepare a dataset for student marks with averages"
+>>>>>>> 213d32e29bd0816255ac04c18fe4fd0820cc2d18
       ]
     }
   ],
-  "supportsAuthenticatedExtendedCard": false,
-  "signatures": []
+
+  "capabilities": {
+    "input": "natural language text",
+    "output": ".xlsx file",
+    "features": [
+      "automatic table generation",
+      "column headers and structured rows",
+      "data organization",
+      "basic formulas (sum, average)",
+      "chart generation (bar, line, pie)",
+      "clean and readable layout"
+    ]
+  },
+
+  "system_prompt": "You are an AI agent that generates Excel spreadsheets. Understand the user's request and convert it into structured tabular data with appropriate column headers and rows. Include calculations such as totals or averages where relevant. Organize the data clearly and logically. Generate charts when useful to represent the data visually."
 }
