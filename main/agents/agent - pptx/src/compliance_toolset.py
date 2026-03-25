@@ -1,98 +1,59 @@
-import logging
+import asyncio
+import json
+import os
+from pptx import Presentation
 from typing import Any
-
 from pydantic import BaseModel
 
-from policy_agent import PolicyAgent
-
-logger = logging.getLogger(__name__)
-
-
-class ComplianceCheckResponse(BaseModel):
-    """Response model for compliance check"""
-
-    status: str
-    response: str
-    error_message: str | None = None
-
+class PPTXRequest(BaseModel):
+    title: str
+    slides: list[dict[str, str]]  # Each dict has "title" and "content"
 
 class ComplianceToolset:
-    """Compliance checking toolset for policy analysis"""
+    """Toolset for generating professional PowerPoint presentations."""
 
-    def __init__(self, mongo_url: str, db_name: str):
-        self.agent = PolicyAgent(mongo_url=mongo_url, db_name=db_name)
-        self.session_id = "a2a_session"
-        logger.info(f"Initialized ComplianceToolset with DB={db_name}")
+    def __init__(self):
+        self.output_dir = "outputs"
+        os.makedirs(self.output_dir, exist_ok=True)
 
-    def check_compliance(
-        self, document_text: str, query: str | None = None
-    ) -> ComplianceCheckResponse:
-        """Check document for policy compliance
-
-        Args:
-            document_text: The document text to analyze for compliance
-            query: Optional specific question about compliance (default: "Analyze this document for policy compliance")
-
-        Returns:
-            ComplianceCheckResponse: Contains status and compliance analysis
+    async def create_presentation(self, presentation_title: str, slides_json: str) -> str:
         """
-        if query is None:
-            query = "Analyze this document for policy compliance"
-
-        try:
-            # Set the document text in the parser
-            self.agent.document_parser.document_text = document_text
-            logger.info(
-                f"Checking compliance for document of length {len(document_text)}"
-            )
-
-            # Get response from policy agent
-            response = self.agent.get_response(query, session_id=self.session_id)
-
-            return ComplianceCheckResponse(
-                status="success",
-                response=response,
-            )
-        except Exception as e:
-            logger.error(f"Error checking compliance: {e}")
-            return ComplianceCheckResponse(
-                status="error",
-                response="",
-                error_message=f"Error checking compliance: {str(e)}",
-            )
-
-    def analyze_policy(self, policy_question: str) -> ComplianceCheckResponse:
-        """Answer questions about policies
-
+        Creates a .pptx file based on a title and a list of slide contents.
+        
         Args:
-            policy_question: Question about specific policies or compliance requirements
-
+            presentation_title: The main title of the PowerPoint.
+            slides_json: A JSON string list of slides, e.g., '[{"title": "Intro", "content": "Hello"}]'
+            
         Returns:
-            ComplianceCheckResponse: Contains status and policy explanation
+            str: A confirmation message with the filename.
         """
         try:
-            logger.info(f"Analyzing policy question: {policy_question}")
+            slides_data = json.loads(slides_json)
+            prs = Presentation()
+            
+            # Title Slide
+            title_slide_layout = prs.slide_layouts[0]
+            slide = prs.slides.add_slide(title_slide_layout)
+            slide.shapes.title.text = presentation_title
 
-            # Get response from policy agent
-            response = self.agent.get_response(
-                policy_question, session_id=self.session_id
-            )
+            # Content Slides
+            bullet_layout = prs.slide_layouts[1]
+            for s in slides_data:
+                slide = prs.slides.add_slide(bullet_layout)
+                slide.shapes.title.text = s.get("title", "Untitled Slide")
+                slide.placeholders[1].text = s.get("content", "")
 
-            return ComplianceCheckResponse(
-                status="success",
-                response=response,
-            )
+            filename = f"{presentation_title.replace(' ', '_')}.pptx"
+            filepath = os.path.join(self.output_dir, filename)
+            prs.save(filepath)
+            
+            return f"Successfully created presentation: {filename} with {len(slides_data)} slides."
+            
         except Exception as e:
-            logger.error(f"Error analyzing policy: {e}")
-            return ComplianceCheckResponse(
-                status="error",
-                response="",
-                error_message=f"Error analyzing policy: {str(e)}",
-            )
+            return f"Failed to create PPTX: {str(e)}"
 
     def get_tools(self) -> dict[str, Any]:
-        """Return dictionary of available tools for OpenAI function calling"""
+        """Registers the tools for OpenAI function calling."""
         return {
-            "check_compliance": self,
-            "analyze_policy": self,
+            'create_presentation': self.create_presentation
         }
