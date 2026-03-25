@@ -1,13 +1,13 @@
 {
   "protocolVersion": "0.2.9",
-  "name": "Compliance Checker Agent",
-  "description": "An agent that analyzes documents for policy violations and compliance issues.",
+  "name": "Excel Generation Agent",
+  "description": "An agent that generates structured .xlsx spreadsheets based on natural language briefs.",
   "url": "http://localhost:10008/",
-  "agentFramework": "langchain",
+  "agentFramework": "openai",
   "preferredTransport": "JSONRPC",
   "provider": {
     "organization": "Nasiko AI Projects",
-    "url": "https://github.com/ashishsharma/nasiko"
+    "url": "https://github.com/deepikaiitd25/aalam-juice-center"
   },
   "iconUrl": "http://localhost:10008/icon.png",
   "version": "1.0.0",
@@ -28,35 +28,17 @@
   ],
   "skills": [
     {
-      "id": "check-compliance",
-      "name": "Check Compliance",
-      "description": "Check document for policy compliance.",
+      "id": "generate-xlsx",
+      "name": "Generate Excel Spreadsheet",
+      "description": "Generates a structured .xlsx spreadsheet based on a document plan and data.",
       "tags": [
-        "compliance",
-        "policy",
-        "document-analysis"
+        "excel",
+        "spreadsheet",
+        "document-generation"
       ],
       "examples": [
-        "Check this document for policy compliance",
-        "Does this email violate any policies?"
-      ],
-      "inputModes": [
-        "text"
-      ],
-      "outputModes": [
-        "application/json"
-      ]
-    },
-    {
-      "id": "analyze-policy",
-      "name": "Analyze Policy",
-      "description": "Answer questions about policies.",
-      "tags": [
-        "policy",
-        "question-answering"
-      ],
-      "examples": [
-        "What are the encryption requirements for file transfers?"
+        "Build a sales performance tracker for Q1",
+        "Create a spreadsheet with columns for rep name, deals closed, revenue, and quota attainment"
       ],
       "inputModes": [
         "text"

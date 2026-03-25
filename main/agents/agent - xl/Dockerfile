@@ -14,11 +14,9 @@ RUN pip install --no-cache-dir \
     pymongo>=4.0.0 \
     langchain-core \
     langchain-openai \
-    PyPDF2 \
     openpyxl \
-    pandas \
-    python-docx
+    pandas
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "__main__.py", "--host", "0.0.0.0", "--port", "5000", "--mongo-url", "mongodb://agents-mongo:27017", "--db-name", "compliance-checker-a2a"]
+CMD ["python", "__main__.py", "--host", "0.0.0.0", "--port", "5000", "--mongo-url", "mongodb://agents-mongo:27017", "--db-name", "excel-agent-a2a"]
