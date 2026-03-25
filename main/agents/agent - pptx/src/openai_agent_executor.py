@@ -21,7 +21,7 @@ logger.setLevel(logging.DEBUG)
 
 
 class OpenAIAgentExecutor(AgentExecutor):
-    """An AgentExecutor that runs an OpenAI-based Agent."""
+    """An AgentExecutor that runs an OpenAI-based Compliance Agent."""
 
     def __init__(
         self,
@@ -245,7 +245,7 @@ class OpenAIAgentExecutor(AgentExecutor):
                 message_text += part.root.text
 
         await self._process_request(message_text, context, updater)
-        logger.debug("[GitHub Agent] execute exiting")
+        logger.debug("[Compliance Agent] execute exiting")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue):
         # Ideally: kill any ongoing tasks.

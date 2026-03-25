@@ -1,6 +1,5 @@
 import json
 import logging
-import inspect
 
 from typing import Any
 
@@ -22,7 +21,7 @@ logger.setLevel(logging.DEBUG)
 
 
 class OpenAIAgentExecutor(AgentExecutor):
-    """An AgentExecutor that runs an OpenAI-based Agent."""
+    """An AgentExecutor that runs an OpenAI-based Compliance Agent."""
 
     def __init__(
         self,
@@ -108,9 +107,6 @@ class OpenAIAgentExecutor(AgentExecutor):
                             if hasattr(tool_instance, function_name):
                                 method = getattr(tool_instance, function_name)
                                 result = method(**function_args)
-                                # Check if the result is a coroutine and await it
-                                if inspect.iscoroutine(result):
-                                    result = await result
                             else:
                                 result = {
                                     "error": f"Method {function_name} not found on tool instance"
@@ -249,7 +245,7 @@ class OpenAIAgentExecutor(AgentExecutor):
                 message_text += part.root.text
 
         await self._process_request(message_text, context, updater)
-        logger.debug("[Translator Agent] execute exiting")
+        logger.debug("[Compliance Agent] execute exiting")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue):
         # Ideally: kill any ongoing tasks.
