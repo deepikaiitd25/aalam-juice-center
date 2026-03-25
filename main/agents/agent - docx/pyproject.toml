@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "compliance-checker2"
+name = "docx-generation-agent"
 version = "1.0.0"
-description = "A2A-compatible Compliance Checker Agent"
+description = "A2A-compatible DOCX Generation Agent"
 requires-python = ">=3.10"
 dependencies = [
     "a2a-sdk>=0.3.0",
@@ -15,6 +15,9 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "uvicorn>=0.34.2",
     "pymongo>=4.0.0",
+    "python-docx>=1.1.0",
+    "pillow>=10.0.0",
+    "matplotlib>=3.8.0"
 ]
 
 [project.optional-dependencies]
