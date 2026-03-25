@@ -27,9 +27,10 @@ logging.basicConfig(level=logging.INFO)
 @click.option("--db-name", "db_name", default="excel-agent-a2a")
 def main(host: str, port: int, mongo_url: str, db_name: str):
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable must be set")
+        raise ValueError(
+            "GEMINI_API_KEY environment variable must be set in .env")
 
     # Define the skill for Nasiko
     skill = AgentSkill(
@@ -61,7 +62,8 @@ def main(host: str, port: int, mongo_url: str, db_name: str):
         tools=agent_data["tools"],
         api_key=api_key,
         system_prompt=agent_data["system_prompt"],
-        model="gpt-4o",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        model="gemini-2.5-flash",
     )
 
     request_handler = DefaultRequestHandler(
@@ -76,7 +78,8 @@ def main(host: str, port: int, mongo_url: str, db_name: str):
     os.makedirs("outputs", exist_ok=True)
     routes = a2a_app.routes()
     routes.append(
-        Mount("/outputs", app=StaticFiles(directory="outputs"), name="outputs"))
+        Mount("/outputs", app=StaticFiles(directory="outputs"), name="outputs")
+    )
 
     app = Starlette(routes=routes)
 
