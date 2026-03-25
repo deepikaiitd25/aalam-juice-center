@@ -1,44 +1,78 @@
-"""
-Tools for the agent.
-Define your LangChain tools here.
-"""
-
-import requests
-from bs4 import BeautifulSoup
-from langchain_core.tools import tool
+from docx import Document
+import matplotlib.pyplot as plt
+import os
 
 
-@tool
-def extract_web_text(url: str) -> str:
+class DocumentTools:
     """
-    Extracts and cleans text content from a given web page URL.
-
-    Args:
-        url: The URL of the web page to extract text from.
-
-    Returns:
-        The text content of the web page, or an error message if extraction fails.
+    Toolset for generating DOCX documents
     """
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
 
-        soup = BeautifulSoup(response.content, "html.parser")
+    def generate_docx(self, title: str, content: str, output_file: str = "output.docx"):
+        """
+        Create a basic DOCX file with title + paragraphs
+        """
 
-        # Remove script and style elements
-        for script in soup(["script", "style"]):
-            script.decompose()
+        doc = Document()
 
-        text = soup.get_text()
+        # Title
+        doc.add_heading(title, 0)
 
-        # Break into lines and remove leading/trailing space on each
-        lines = (line.strip() for line in text.splitlines())
-        # Break multi-headlines into a line each
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        # Drop blank lines
-        text = "\n".join(chunk for chunk in chunks if chunk)
+        # Content
+        for line in content.split("\n"):
+            if line.strip():
+                doc.add_paragraph(line)
 
-        return text[:10000]  # Limit to 10k chars to avoid overwhelming context
+        doc.save(output_file)
 
-    except Exception as e:
-        return f"Error extracting text from {url}: {str(e)}"
+        return {
+            "status": "success",
+            "file": output_file
+        }
+
+    def generate_docx_with_chart(self, title: str, content: str, data: list, output_file: str = "output.docx"):
+        """
+        Create DOCX with embedded chart
+        data = [("Jan", 10), ("Feb", 20)]
+        """
+
+        chart_path = "chart.png"
+
+        # Create chart
+        labels = [d[0] for d in data]
+        values = [d[1] for d in data]
+
+        plt.figure()
+        plt.bar(labels, values)
+        plt.title("Generated Chart")
+        plt.savefig(chart_path)
+        plt.close()
+
+        # Create document
+        doc = Document()
+        doc.add_heading(title, 0)
+
+        for line in content.split("\n"):
+            if line.strip():
+                doc.add_paragraph(line)
+
+        # Add chart image
+        if os.path.exists(chart_path):
+            doc.add_paragraph("Chart:")
+            doc.add_picture(chart_path)
+
+        doc.save(output_file)
+
+        return {
+            "status": "success",
+            "file": output_file
+        }
+
+    def choose_chart_type(self, data: list):
+        """
+        Simple logic to choose chart type
+        """
+
+        if len(data) <= 5:
+            return "pie"
+        return "bar"
