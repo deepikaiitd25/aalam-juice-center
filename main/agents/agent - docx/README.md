@@ -1,23 +1,11 @@
-# Compliance Checker Agent (A2A Compatible)
+# Document generation agent (A2A Compatible)
 
-An A2A-compatible agent that analyzes documents for policy violations and compliance issues.
+An A2A-compatible agent that autonomously generates structured .docx based on natural language briefs.
 
 ## Features
-
-- Document compliance checking against organizational policies
-- Policy analysis and explanations
-- Specific violation identification with evidence
-- Recommendations for fixing compliance issues
-
-## Policies Checked
-
-1. **Professional Tone** - All communications must maintain respectful, professional tone
-2. **No Sensitive Data Sharing** - Must not include PII unless encrypted/authorized
-3. **IFRS vs. GAAP** - Financial reports must follow IFRS, not GAAP
-4. **Expense Approvals** - Expenses over $50,000 require CEO/finance approval
-5. **Encryption** - File transfers must specify encryption method
-6. **Work Hours** - No work outside 9am-6pm without approval
-7. **Internal Communication** - No inter-department document sharing
+-Parses natural language input to create structured documents
+-Generates well-organized content with headings and subheadings
+-Formats paragraphs, bullet lists
 
 ## Setup
 
