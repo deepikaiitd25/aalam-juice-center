@@ -80,41 +80,5 @@ class DataAnalysisToolset:
             'analyze_data': self,
             'process_dataset': self,
         }
-```
 
-**Tool Guidelines:**
-- Use clear, descriptive function names and docstrings
-- The OpenAI model uses docstrings to understand when to call your tools
-- Handle errors gracefully with try/catch blocks  
-- Return strings (the A2A protocol expects text responses)
-- Keep tools focused on single responsibilities
-- Use type hints and Pydantic models for validation
 
-### Step 4: Update Dependencies (If Needed)
-
-If your agent requires additional dependencies, update:
-
-**`pyproject.toml`:**
-```toml
-dependencies = [
-    "a2a-sdk>=0.3.0",
-    "click>=8.1.8",
-    "openai>=1.57.0", 
-    "pydantic>=2.11.4",
-    # Add your custom dependencies
-    "pandas>=2.0.0",
-    "numpy>=1.24.0", 
-    "scikit-learn>=1.3.0",
-]
-```
-
-**`Dockerfile`:**
-```dockerfile
-RUN pip install --no-cache-dir \
-    "a2a-sdk[http-server]>=0.3.0" \
-    openai>=1.57.0 \
-    pydantic>=2.11.4 \
-    # Add your custom dependencies
-    pandas>=2.0.0 \
-    numpy>=1.24.0 \
-    scikit-learn>=1.3.0
