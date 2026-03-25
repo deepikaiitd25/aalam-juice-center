@@ -1,0 +1,95 @@
+{
+  "protocolVersion": "0.2.9",
+  "name": "Compliance Checker Agent",
+  "description": "An agent that analyzes documents for policy violations and compliance issues.",
+  "url": "http://localhost:10008/",
+  "preferredTransport": "JSONRPC",
+  "provider": {
+    "organization": "Nasiko AI Projects",
+    "url": "https://github.com/ashishsharma/nasiko"
+  },
+  "iconUrl": "http://localhost:10008/icon.png",
+  "version": "1.0.0",
+  "documentationUrl": "http://localhost:10008/docs",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": true,
+    "chat_agent": false
+  },
+  "securitySchemes": {},
+  "security": [],
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "compliance_checking",
+      "name": "Compliance Checking",
+      "description": "Analyze documents for policy violations and compliance issues.",
+      "tags": [
+        "compliance",
+        "policy",
+        "document-analysis",
+        "regulations"
+      ],
+      "examples": [
+        "Check this document for policy compliance",
+        "Does this email violate any policies?",
+        "Analyze this expense report for compliance issues",
+        "What are the encryption requirements for file transfers?"
+      ],
+      "inputModes": [
+        "text"
+      ],
+      "outputModes": [
+        "text"
+      ]
+    },
+    {
+      "id": "check-compliance",
+      "name": "Check Compliance",
+      "description": "Check document for policy compliance.",
+      "tags": [
+        "compliance",
+        "document",
+        "policy"
+      ],
+      "examples": [
+        "Check this document for compliance issues.",
+        "Is this report compliant with company policies?"
+      ],
+      "inputModes": [
+        "text"
+      ],
+      "outputModes": [
+        "application/json"
+      ]
+    },
+    {
+      "id": "analyze-policy",
+      "name": "Analyze Policy",
+      "description": "Answer questions about policies.",
+      "tags": [
+        "policy",
+        "questions",
+        "analysis"
+      ],
+      "examples": [
+        "What are the data retention policies?",
+        "Explain the policy on remote work."
+      ],
+      "inputModes": [
+        "text"
+      ],
+      "outputModes": [
+        "application/json"
+      ]
+    }
+  ],
+  "supportsAuthenticatedExtendedCard": false,
+  "signatures": []
+}
