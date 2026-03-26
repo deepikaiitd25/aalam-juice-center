@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  a2a-pptx-agent:
+    build: .
+    container_name: a2a-pptx-agent
+    ports:
+      - "5000:5000"
+    environment:
+      # Pulls the key securely from the Nasiko Dashboard
+      - GEMINI_API_KEY=${AIzaSyBj7hrV_Si5xvDg7mpfCiu1zXRafhWL0Tc}
+      - MONGO_URL=mongodb://agents-mongo:27017
+      - DB_NAME=a2a-pptx-agent
+    stdin_open: true
+    tty: true

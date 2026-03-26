@@ -1,0 +1,41 @@
+{
+  "protocolVersion": "0.2.9",
+  "name": "PowerPoint Generation Agent",
+  "description": "An agent that generates structured .pptx slide decks from natural language briefs.",
+  "url": "http://localhost:10009/",
+  "preferredTransport": "JSONRPC",
+  "provider": {
+    "organization": "Nasiko AI Projects",
+    "url": "https://github.com/your-username/agent-pptx"
+  },
+  "iconUrl": "http://localhost:10009/icon.png",
+  "version": "1.0.0",
+  "documentationUrl": "http://localhost:10009/docs",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": true,
+    "chat_agent": false
+  },
+  "securitySchemes": {},
+  "security": [],
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "skills": [
+    {
+      "id": "generate-pptx",
+      "name": "Generate PowerPoint Presentation",
+      "description": "Generates a structured .pptx slide deck based on a natural language brief.",
+      "tags": ["powerpoint", "presentation", "slides", "pptx", "document-generation"],
+      "examples": [
+        "Create a 10-slide pitch deck for a fintech startup targeting seed investors",
+        "Make a presentation on the impact of AI in healthcare with 8 slides",
+        "Build a company overview deck with problem, solution, market, and team slides"
+      ],
+      "inputModes": ["text"],
+      "outputModes": ["text/plain"]
+    }
+  ],
+  "supportsAuthenticatedExtendedCard": false,
+  "signatures": []
+}

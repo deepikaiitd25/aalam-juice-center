@@ -1,0 +1,1 @@
+{"jsonrpc": "2.0", "id": "pptx-test-01", "method": "message/send", "params": {"session_id": "varun_pptx_test", "message": {"role": "user", "parts": [{"kind": "text", "text": "Create a 5-slide deck on the history of IIT Delhi"}], "messageId": "msg-001"}}}

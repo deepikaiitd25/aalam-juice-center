@@ -1,0 +1,28 @@
+# ── Server & CLI ──────────────────────────────────────────
+click>=8.1.0
+uvicorn>=0.27.0
+starlette>=0.36.0
+python-dotenv>=1.0.0
+
+# ── LLM & Models ─────────────────────────────────────────
+openai>=1.12.0
+pydantic>=2.6.0
+
+# ── File Generation ───────────────────────────────────────
+python-pptx>=0.6.23
+
+# ── Image scraping (stdlib urllib used; requests for optional use) ─────────
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# ── Charts & Infographics ─────────────────────────────────
+matplotlib>=3.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# ── A2A framework (install from local path if needed) ─────
+# pip install -e ../a2a
+
+# NOTE: No virtual environment required.
+# Install with: pip install -r requirements.txt --break-system-packages
+# (or use your system Python directly if packages are already installed)
