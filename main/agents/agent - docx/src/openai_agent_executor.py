@@ -86,16 +86,14 @@ class OpenAIAgentExecutor(AgentExecutor):
                         tool_provider = self.tools[function_name]
                         method = getattr(tool_provider, function_name)
 
-                        # Execute the tool (generate_docx / generate_pptx)
-                        result = method(**function_args)
-
-                        # Format the result for the A2A Frontend
-                        if hasattr(result, "model_dump_json"):
-                            result_text = result.model_dump_json()
+                        # THE FIX: Handle async tool execution
+                        if inspect.iscoroutinefunction(method):
+                            result = await method(**function_args)
                         else:
-                            result_text = json.dumps(result) if isinstance(
-                                result, dict) else str(result)
+                            result = method(**function_args)
 
+                        # The A2A SDK just wants the raw text string back
+                        result_text = str(result)
                         await task_updater.add_artifact([TextPart(text=result_text)])
 
                 await task_updater.complete()
@@ -125,11 +123,25 @@ class OpenAIAgentExecutor(AgentExecutor):
             if param_name == 'self':
                 continue
 
-            # Default to string, but check type hints for smarter routing
-            p_type = "string"
+            # THE FIX: Explicitly define the object structure for lists
             if param.annotation == list:
-                p_type = "array"
-            elif param.annotation == dict:
+                properties[param_name] = {
+                    "type": "array",
+                    "description": f"The list of {param_name} for the document.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string", "description": "Section title"},
+                            "content": {"type": "string", "description": "Detailed paragraph content"}
+                        },
+                        "required": ["heading", "content"]
+                    }
+                }
+                required.append(param_name)
+                continue
+
+            p_type = "string"
+            if param.annotation == dict:
                 p_type = "object"
             elif param.annotation == int:
                 p_type = "integer"

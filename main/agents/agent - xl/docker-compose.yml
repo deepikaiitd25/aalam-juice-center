@@ -1,20 +1,15 @@
+version: "3.9"
+
 services:
   a2a-excel-agent:
     build: .
     container_name: a2a-excel-agent
+    ports:
+      - "5000:5000"
     environment:
+      # THE FIX: Pulls the key securely from the Nasiko Dashboard
+      - GEMINI_API_KEY=${AIzaSyBj7hrV_Si5xvDg7mpfCiu1zXRafhWL0Tc}
       - MONGO_URL=mongodb://agents-mongo:27017
       - DB_NAME=a2a-excel-agent
     stdin_open: true
-    ports:
-      - "5000:5000"
     tty: true
-    networks:
-      - agents-net
-      - agents-db-net
-
-networks:
-  agents-net:
-    external: true
-  agents-db-net:
-    external: true

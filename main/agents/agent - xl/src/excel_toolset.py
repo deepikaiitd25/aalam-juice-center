@@ -3,15 +3,8 @@ import os
 import json
 import pandas as pd
 from typing import Any, List, Dict, Union
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
-
-
-class ExcelGenerationResponse(BaseModel):
-    status: str
-    file_url: str | None = None
-    error_message: str | None = None
 
 
 class ExcelToolset:
@@ -25,12 +18,18 @@ class ExcelToolset:
         logger.info(
             f"Initialized ExcelToolset. Saving files to ./{self.output_dir}")
 
-    def generate_excel(self, filename: str, sheet_name: str, data: Union[List[Dict[str, Any]], str]) -> ExcelGenerationResponse:
+    # THE FIX: Made async and returning a clean text string
+    async def generate_excel(self, filename: str, sheet_name: str, data: Union[List[Dict[str, Any]], str]) -> str:
         """
         Generates an Excel (.xlsx) file from structured tabular data.
+
+        Args:
+            filename: Output filename (e.g., budget.xlsx)
+            sheet_name: Name of the sheet (e.g., Q1_Data)
+            data: A list of dictionaries where keys are column headers and values are row data.
         """
         try:
-            # FIX: If the LLM passes a JSON string instead of a Python list, parse it!
+            # Handle stringified JSON from LLM
             if isinstance(data, str):
                 logger.info("Data received as a string. Parsing JSON...")
                 data = json.loads(data)
@@ -43,22 +42,18 @@ class ExcelToolset:
 
             filepath = os.path.join(self.output_dir, filename)
 
+            # Generate the Excel file
             df = pd.DataFrame(data)
             df.to_excel(filepath, index=False, sheet_name=sheet_name)
 
             download_url = f"http://{self.host}:{self.port}/outputs/{filename}"
 
-            return ExcelGenerationResponse(
-                status="success",
-                file_url=download_url,
-            )
+            # THE FIX: Return standard Markdown for the Nasiko UI
+            return f"✅ Successfully generated **{filename}**!\n\n📊 [Download your spreadsheet here]({download_url})"
 
         except Exception as e:
             logger.error(f"Error generating Excel file: {e}")
-            return ExcelGenerationResponse(
-                status="error",
-                error_message=f"Failed to generate file: {str(e)}",
-            )
+            return f"❌ Failed to generate spreadsheet: {str(e)}"
 
     def get_tools(self) -> dict[str, Any]:
         return {

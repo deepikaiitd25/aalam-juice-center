@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Response model
 # ---------------------------------------------------------------------------
 
+
 class PptxGenerationResponse(BaseModel):
     status: str
     file_url: str | None = None
@@ -163,8 +164,10 @@ def _build_two_column_slide(prs, data, t):
                     run.font.size = Pt(17)
                     run.font.color.rgb = t["dark"]
 
-    _col(Inches(0.5), data.get("left_title", "Option A"), data.get("left_bullets", []))
-    _col(mid + Inches(0.3), data.get("right_title", "Option B"), data.get("right_bullets", []))
+    _col(Inches(0.5), data.get("left_title", "Option A"),
+         data.get("left_bullets", []))
+    _col(mid + Inches(0.3), data.get("right_title",
+         "Option B"), data.get("right_bullets", []))
     _rect(sl, 0, H - Inches(0.08), W, Inches(0.08), t["accent"])
 
 
@@ -186,6 +189,10 @@ def _build_closing_slide(prs, data, t):
 # Toolset class
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Toolset class
+# ---------------------------------------------------------------------------
+
 class PptxToolset:
     """Toolset for generating PowerPoint presentations."""
 
@@ -194,32 +201,31 @@ class PptxToolset:
         self.port = port
         self.output_dir = "outputs"
         os.makedirs(self.output_dir, exist_ok=True)
-        logger.info(f"Initialized PptxToolset. Saving files to ./{self.output_dir}")
+        logger.info(
+            f"Initialized PptxToolset. Saving files to ./{self.output_dir}")
 
-    def generate_pptx(
+    # THE FIX: Make it async and return a clean text string
+    async def generate_pptx(
         self,
         filename: str,
-        slides: Union[list, str],
+        slides: list,
         theme: str = "blue",
-    ) -> PptxGenerationResponse:
+    ) -> str:
         """
         Generates a PowerPoint (.pptx) presentation from structured slide data.
 
         Args:
             filename: Output filename (without extension, e.g. "startup_pitch")
-            slides: List of slide objects (or a JSON string of that list). Each object must have
-                    a "type" field ("title", "content", "two_column", or "closing") plus the
-                    relevant content fields (title, subtitle, bullets, left_title, left_bullets,
-                    right_title, right_bullets, notes).
+            slides: List of slide objects describing the presentation.
             theme: Color theme — one of: blue, green, dark, red, purple (default: blue)
         """
         try:
-            # Handle JSON string input (LLM sometimes passes a string)
             if isinstance(slides, str):
                 logger.info("slides received as string — parsing JSON...")
                 slides = json.loads(slides)
 
-            logger.info(f"Generating PPTX: {filename} with {len(slides)} slides, theme={theme}")
+            logger.info(
+                f"Generating PPTX: {filename} with {len(slides)} slides, theme={theme}")
 
             if not filename.endswith(".pptx"):
                 filename += ".pptx"
@@ -231,7 +237,12 @@ class PptxToolset:
             prs.slide_height = Inches(7.5)
 
             for slide_data in slides:
+                # Fallback to empty dict if LLM hallucinates
+                if not isinstance(slide_data, dict):
+                    slide_data = {"type": "content", "title": str(slide_data)}
+
                 slide_type = slide_data.get("type", "content").lower()
+
                 if slide_type == "title":
                     _build_title_slide(prs, slide_data, t)
                 elif slide_type == "two_column":
@@ -247,17 +258,12 @@ class PptxToolset:
             download_url = f"http://{self.host}:{self.port}/outputs/{filename}"
             logger.info(f"Saved PPTX to {filepath}")
 
-            return PptxGenerationResponse(
-                status="success",
-                file_url=download_url,
-            )
+            # THE FIX: Return standard Markdown for the Nasiko UI
+            return f"✅ Successfully generated **{filename}**!\n\n📊 [Download your presentation here]({download_url})"
 
         except Exception as e:
             logger.error(f"Error generating PPTX: {e}")
-            return PptxGenerationResponse(
-                status="error",
-                error_message=f"Failed to generate file: {str(e)}",
-            )
+            return f"❌ Failed to generate presentation: {str(e)}"
 
     def get_tools(self) -> dict[str, Any]:
         return {

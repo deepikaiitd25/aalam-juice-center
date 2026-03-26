@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy source code
-COPY src/ /app
+# THE FIX: Copy everything into /app, preserving the 'src' folder structure
+COPY . /app/
 
 # Install dependencies
 RUN pip install --no-cache-dir \
@@ -20,5 +20,5 @@ RUN pip install --no-cache-dir \
 # Environment settings
 ENV PYTHONUNBUFFERED=1
 
-# Run your agent
-CMD ["python", "__main__.py", "--host", "0.0.0.0", "--port", "5000"]
+# THE FIX: Point Python to the file inside the preserved 'src' folder
+CMD ["python", "src/__main__.py", "--host", "0.0.0.0", "--port", "5000"]

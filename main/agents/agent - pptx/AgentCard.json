@@ -33,7 +33,7 @@
         "Build a company overview deck with problem, solution, market, and team slides"
       ],
       "inputModes": ["text"],
-      "outputModes": ["application/json"]
+      "outputModes": ["text/plain"]
     }
   ],
   "supportsAuthenticatedExtendedCard": false,

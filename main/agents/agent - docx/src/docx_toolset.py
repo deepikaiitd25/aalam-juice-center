@@ -1,16 +1,9 @@
 import os
-import json  # Added for parsing
+import json
 import logging
 from docx import Document
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
-
-
-class DocxResponse(BaseModel):
-    status: str
-    file_url: str | None = None
-    error: str | None = None
 
 
 class DocxToolset:
@@ -20,9 +13,10 @@ class DocxToolset:
         self.output_dir = "outputs"
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def generate_docx(self, filename: str, title: str, sections: list) -> DocxResponse:
+    # THE FIX: Made async and returning a clean string for the A2A protocol
+    async def generate_docx(self, filename: str, title: str, sections: list) -> str:
+        """Generate a Word document with specific sections."""
         try:
-            # FIX: If sections arrived as a string, parse it into a list
             if isinstance(sections, str):
                 logger.info("Sections received as string, parsing JSON...")
                 sections = json.loads(sections)
@@ -34,9 +28,13 @@ class DocxToolset:
             doc.add_heading(title, 0)
 
             for section in sections:
-                # Double-check that section is actually a dict
-                heading = section.get("heading", "Section")
-                content = section.get("content", "")
+                # Fallback in case Gemini hallucinates the structure
+                if isinstance(section, dict):
+                    heading = section.get("heading", "Section")
+                    content = section.get("content", "")
+                else:
+                    heading = "Section"
+                    content = str(section)
 
                 doc.add_heading(heading, level=1)
                 doc.add_paragraph(content)
@@ -45,10 +43,12 @@ class DocxToolset:
             doc.save(filepath)
 
             url = f"http://{self.host}:{self.port}/outputs/{filename}"
-            return DocxResponse(status="success", file_url=url)
+            # Return a user-friendly string that the A2A TextPart will display
+            return f"✅ Successfully generated **{filename}**!\n\n📥 [Download your report here]({url})"
+
         except Exception as e:
             logger.error(f"❌ DOCX Generation failed: {e}")
-            return DocxResponse(status="error", error=str(e))
+            return f"❌ Failed to generate report: {str(e)}"
 
     def get_tools(self):
         return {"generate_docx": self}

@@ -1,22 +1,19 @@
-ersion: "3.9"
+version: "3.9"
 
 services:
   a2a-docx-agent:
     build: .
     container_name: a2a-docx-agent
-    environment:
-      - MONGO_URL=mongodb://agents-mongo:27017
-      - DB_NAME=a2a-docx-agent
-    stdin_open: true
     ports:
       - "5000:5000"
+    environment:
+      # THE FIX: This pulls the key from the Nasiko Dashboard into your agent
+      - GEMINI_API_KEY=${AIzaSyBj7hrV_Si5xvDg7mpfCiu1zXRafhWL0Tc}
+      
+      # Kept these from your template in case the A2A SDK requires them
+      - MONGO_URL=mongodb://agents-mongo:27017
+      - DB_NAME=a2a-docx-agent
+    
+    # Optional but helpful for debugging if the dashboard provides a console
+    stdin_open: true
     tty: true
-    networks:
-      - agents-net
-      - agents-db-net
-
-networks:
-  agents-net:
-    external: true
-  agents-db-net:
-    external: true
