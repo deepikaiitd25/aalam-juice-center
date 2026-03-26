@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": "docx-test-01",
+  "method": "message/send",
+  "params": {
+    "session_id": "varun_docx_test",
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Create a professional 3-page report on the history and impact of IIT Delhi."
+        }
+      ],
+      "messageId": "msg-001"
+    }
+  }
+}
