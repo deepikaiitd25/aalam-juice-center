@@ -1,9 +1,11 @@
 """
 Routing engine service for AI-powered agent selection.
+Updated for Hackathon: Native Gemini Embeddings & Gemini-OpenAI Bridge for LLM.
 """
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -11,7 +13,8 @@ import numpy as np
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from router.src.config import settings
@@ -32,43 +35,26 @@ class RoutingEngine:
         self.embedding_model = self._create_embedding_model()
 
     def _create_llm(self) -> ChatOpenAI:
-        """Create LLM instance for routing decisions.
+        """Create LLM instance for routing decisions using Gemini via OpenAI bridge."""
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-        Supports multiple providers via ROUTER_LLM_PROVIDER setting:
-        - "openai": Uses OpenAI API (default)
-        - "openrouter": Uses OpenRouter API
-        - "minimax": Uses MiniMax OpenAI-compatible API
-        """
-        provider = settings.ROUTER_LLM_PROVIDER.lower()
-        model = settings.ROUTER_LLM_MODEL
+        logger.info(
+            "🧠 Initializing LLM Routing Engine with Gemini 2.5 Flash...")
+        return ChatOpenAI(
+            model="gemini-2.5-flash",
+            temperature=0,
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        ).with_structured_output(RouterOutput)
 
-        if provider == "minimax":
-            return ChatOpenAI(
-                model=model or "MiniMax-M2.7",
-                temperature=1.0,
-                api_key=settings.MINIMAX_API_KEY,
-                base_url=settings.MINIMAX_BASE_URL,
-            ).with_structured_output(RouterOutput)
-        elif provider == "openrouter":
-            return ChatOpenAI(
-                model=model or "google/gemini-2.5-flash",
-                temperature=0,
-                api_key=settings.OPENROUTER_API_KEY,
-                base_url="https://openrouter.ai/api/v1",
-            ).with_structured_output(RouterOutput)
-        else:
-            return ChatOpenAI(
-                model=model or "gpt-4o-mini",
-                temperature=0,
-                api_key=settings.OPENAI_API_KEY,
-            ).with_structured_output(RouterOutput)
+    def _create_embedding_model(self) -> GoogleGenerativeAIEmbeddings:
+        """Create Gemini embeddings instance for re-ranking."""
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-    def _create_embedding_model(self) -> OpenAIEmbeddings:
-        """Create OpenAI embeddings instance."""
-
-        return OpenAIEmbeddings(
-            model=settings.RERANKING_EMBEDDING_MODEL,
-            openai_api_key=settings.OPENAI_API_KEY,
+        logger.info("🔢 Initializing Native Gemini Embeddings for Re-ranking...")
+        return GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=api_key
         )
 
     def route_query(
@@ -78,21 +64,7 @@ class RoutingEngine:
         agent_cards: List[Dict[str, Any]],
         vectorstore: FAISS,
     ) -> Tuple[List[str], List[float], List[str], RouterOutput]:
-        """
-        Route a user query to the most appropriate agent.
-
-        Args:
-            message: User's query message
-            conversation_history: User's conversation history in the current session
-            agent_cards: List of available agent card dictionaries
-            vectorstore: FAISS vector store for similarity search
-
-        Returns:
-            Tuple of (shortlisted_agents, router_output)
-
-        Raises:
-            RoutingEngineError: If routing fails
-        """
+        """Route a user query to the most appropriate agent."""
         try:
             if len(agent_cards) < 15:
                 first_shortlist = [agent["name"] for agent in agent_cards]
@@ -139,18 +111,7 @@ class RoutingEngine:
         conversation_history: List[Dict[str, str]],
         k: int = 2,
     ) -> List[str]:
-        """
-        Re-rank agents based on conversation history.
-
-        Args:
-            first_search_results: List of search results from semantic search
-            first_search_embeddings: Embeddings corresponding to search results
-            conversation_history: User's conversation history
-            k: Number of agents to return
-
-        Returns:
-            List of agent names
-        """
+        """Re-rank agents based on conversation history."""
         conversation_history_str = self._prepare_conversation_history(
             conversation_history
         )
@@ -176,18 +137,7 @@ class RoutingEngine:
         agent_cards: List[Dict[str, Any]],
         vectorstore: FAISS,
     ) -> Tuple[List[str], List[float], List[str], List[Dict[str, Any]]]:
-        """
-        Perform semantic search to shortlist relevant agents.
-
-        Args:
-            message: User's query message
-            conversation_history: User's conversation history
-            agent_cards: List of available agent cards
-            vectorstore: FAISS vector store
-
-        Returns:
-            Tuple of (first_shortlist, second_shortlist, shortlisted_agent_cards)
-        """
+        """Perform semantic search to shortlist relevant agents."""
         try:
             k = 15
 
@@ -198,7 +148,8 @@ class RoutingEngine:
 
             # Directly search the FAISS index to get indices and distances
             distances, indices = vectorstore.index.search(query_embedding, k)
-            distances = distances[0]  # Get the first (and only) query's results
+            # Get the first (and only) query's results
+            distances = distances[0]
             indices = indices[0]
 
             # Retrieve documents and embeddings using the indices
@@ -215,14 +166,14 @@ class RoutingEngine:
                 embedding = vectorstore.index.reconstruct(int(idx))
                 search_embeddings.append(embedding.tolist())
                 # Convert L2 squared distance to cosine similarity
-                # For normalized vectors: cosine_sim = 1 - (L2² / 2)
                 cosine_sim = 1 - (float(distances[i]) / 2)
                 similarity_scores.append(cosine_sim)
 
-            if similarity_scores[0] < 0.2:
+            if not similarity_scores or similarity_scores[0] < 0.2:
                 first_shortlist = [agent["name"] for agent in agent_cards]
             else:
-                first_shortlist = [result.metadata["name"] for result in search_results]
+                first_shortlist = [result.metadata["name"]
+                                   for result in search_results]
             logger.info(f"First shortlist of agents: {first_shortlist}")
 
             if conversation_history is None or len(conversation_history) == 0:
@@ -262,19 +213,7 @@ class RoutingEngine:
         conversation_history: List[Dict[str, str]],
         agent_cards: List[Dict[str, Any]],
     ) -> RouterOutput:
-        """
-        Use LLM to make final agent selection from shortlisted agents.
-
-        Args:
-            message: User's query message
-            agent_cards: Shortlisted agent cards
-
-        Returns:
-            RouterOutput with selected agent information
-
-        Raises:
-            RoutingEngineError: If LLM routing fails
-        """
+        """Use LLM to make final agent selection from shortlisted agents."""
         try:
             system_prompt = """You are an agent router. Your job is to route a user's request to the appropriate agent.
 INSTRUCTIONS: 
@@ -307,7 +246,8 @@ User's request: {message}."""
             response = self.llm.invoke(prompt)
 
             if not isinstance(response, RouterOutput):
-                raise RoutingEngineError("LLM response is not of type RouterOutput")
+                raise RoutingEngineError(
+                    "LLM response is not of type RouterOutput")
 
             logger.info(f"LLM selected agent: {response.agent_name}")
             return response
@@ -325,21 +265,6 @@ def router(
     agent_cards: List[Dict[str, Any]],
     vectorstore: FAISS,
 ) -> Tuple[List[str], List[float], List[str], RouterOutput]:
-    """
-    Route a user query to the most appropriate agent.
-
-    This is a convenience function that maintains backward compatibility
-    with the existing router interface.
-
-    Args:
-        message: User's query message
-        conversation_history: User's conversation history in the current session
-        agent_cards: List of available agent card dictionaries
-        vectorstore: FAISS vector store for similarity search
-
-    Returns:
-        Tuple of (shortlisted_agents, router_output)
-    """
     routing_engine = RoutingEngine()
     return routing_engine.route_query(
         message, conversation_history, agent_cards, vectorstore

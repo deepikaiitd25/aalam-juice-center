@@ -1,120 +1,54 @@
-"""
-Session history service for fetching session history for a user.
-"""
-
 import logging
-from typing import Any, List, Dict
-
 import httpx
-from router.src.config import settings
+from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
+# Add this missing class back so the Router doesn't crash on import!
+
 
 class SessionHistoryError(Exception):
-    """Custom exception for agent registry errors."""
-
     pass
 
 
 class SessionHistoryService:
-    """Service for interacting with the chat history service."""
+    """Service to connect directly to the Chat History Microservice."""
 
     def __init__(self):
-        self.timeout = httpx.Timeout(settings.REQUEST_TIMEOUT)
+        # Pointing directly to your new microservice on port 8002
+        self.history_url = "http://localhost:8002/chat-history/"
 
-    async def fetch_session_history(
-        self, token: str, session_id: str
-    ) -> List[Dict[str, str]]:
-        """
-        Fetch session history.
-
-        Args:
-            token: Authorization token
-            session_id: Session ID
-
-        Returns:
-            The session history
-
-        Raises:
-            SessionHistoryError: If fetching fails
-        """
-
-        chat_history_url = f"{settings.NASIKO_BACKEND}/chat/session/{session_id}"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
-
-        logger.info(f"Fetching session history from {chat_history_url}")
-
+    async def fetch_session_history(self, token: str, session_id: str) -> List[Any]:
+        logger.info(
+            f"📚 Fetching actual session history from {self.history_url}{session_id}")
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(chat_history_url, headers=headers)
-                response.raise_for_status()
-                data = response.json()
+            # We use httpx to make an async call to your Chat History service
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{self.history_url}{session_id}")
 
-                self._validate_response(data)
-                history = data["data"]
-
-                logger.info(
-                    f"Successfully fetched {len(history)} messages from chat history"
-                )
-                return history
-
-        except httpx.HTTPStatusError as e:
-            error_msg = f"HTTP error session history: {e.response.status_code} {e.response.text}"
-            logger.error(error_msg)
-            raise SessionHistoryError(error_msg) from e
-
-        except httpx.RequestError as e:
-            error_msg = f"Request error fetching session history: {e}"
-            logger.error(error_msg)
-            raise SessionHistoryError(error_msg) from e
-
+                if response.status_code == 200:
+                    data = response.json()
+                    messages = data.get("messages", [])
+                    logger.info(
+                        f"✅ Found {len(messages)} past messages for this session.")
+                    return messages
+                else:
+                    logger.warning(
+                        f"⚠️ No history found (Status: {response.status_code})")
+                    return []
         except Exception as e:
-            error_msg = f"Unexpected error fetching session history: {e}"
-            logger.error(error_msg)
-            raise SessionHistoryError(error_msg) from e
-
-    def _validate_response(self, data: Dict) -> None:
-        """
-        Validate the response from the chat history API.
-
-        Args:
-            data: The response data from the chat history API.
-
-        Raises:
-            ValueError: If the response is invalid.
-        """
-        if "data" not in data:
-            raise ValueError("Invalid chat history: missing 'data' field")
-
-        if not isinstance(data["data"], list):
-            raise ValueError("Invalid chat history: 'data' field is not a list")
-
-    def reconstruct_conversation(
-        self, response: List[Dict[str, Any]]
-    ) -> List[Dict[str, str]]:
-        """
-        Reconstruct a conversation from a chat history response.
-
-        Args:
-            response: The chat history response from the API.
-
-        Returns:
-            A list of dictionaries, where each dictionary contains the role and content of a message in the conversation.
-
-        Raises:
-            Exception: If there is an error reconstructing the conversation.
-        """
-        conversation = []
-        try:
-            for message in response:
-                conversation.append(
-                    {"role": message["role"], "content": message["content"]}
-                )
-            return conversation
-        except Exception as e:
-            logger.error(f"Error reconstructing conversation: {e}")
+            logger.error(f"❌ Failed to connect to Chat History Service: {e}")
             return []
+
+    def reconstruct_conversation(self, messages: List[Any]) -> str:
+        """Formats the past JSON messages into a readable text script for the AI."""
+        if not messages:
+            return ""
+
+        conversation = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            conversation.append(f"{role.upper()}: {content}")
+
+        return "\n".join(conversation)
