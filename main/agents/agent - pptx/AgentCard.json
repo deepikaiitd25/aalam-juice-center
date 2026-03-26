@@ -2,15 +2,15 @@
   "protocolVersion": "0.2.9",
   "name": "PowerPoint Generation Agent",
   "description": "An agent that generates structured .pptx slide decks from natural language briefs.",
-  "url": "http://localhost:10008/",
+  "url": "http://localhost:10009/",
   "preferredTransport": "JSONRPC",
   "provider": {
     "organization": "Nasiko AI Projects",
     "url": "https://github.com/your-username/agent-pptx"
   },
-  "iconUrl": "http://localhost:10008/icon.png",
+  "iconUrl": "http://localhost:10009/icon.png",
   "version": "1.0.0",
-  "documentationUrl": "http://localhost:10008/docs",
+  "documentationUrl": "http://localhost:10009/docs",
   "capabilities": {
     "streaming": true,
     "pushNotifications": false,

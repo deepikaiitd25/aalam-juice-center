@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO)
 
 @click.command()
 @click.option("--host", "host", default="localhost")
-@click.option("--port", "port", default=10008)
+@click.option("--port", "port", default=10009)
 @click.option("--mongo-url", "mongo_url", default="mongodb://localhost:27017")
 @click.option("--db-name", "db_name", default="pptx-agent-a2a")
 def main(host: str, port: int, mongo_url: str, db_name: str):
