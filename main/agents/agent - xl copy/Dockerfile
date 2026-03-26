@@ -11,9 +11,12 @@ RUN pip install --no-cache-dir \
     pydantic>=2.11.4 \
     python-dotenv>=1.1.0 \
     uvicorn>=0.34.2 \
-    python-pptx>=0.6.23 \
-    lxml>=4.9.0
+    pymongo>=4.0.0 \
+    langchain-core \
+    langchain-openai \
+    openpyxl \
+    pandas
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "__main__.py", "--host", "0.0.0.0", "--port", "5000", "--mongo-url", "mongodb://agents-mongo:27017", "--db-name", "pptx-agent-a2a"]
+CMD ["python", "__main__.py", "--host", "0.0.0.0", "--port", "5000", "--mongo-url", "mongodb://agents-mongo:27017", "--db-name", "excel-agent-a2a"]

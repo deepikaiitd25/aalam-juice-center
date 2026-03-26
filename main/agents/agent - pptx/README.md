@@ -1,71 +1,87 @@
-# Compliance Checker Agent (A2A Compatible)
+# PowerPoint Generation Agent (A2A Compatible)
 
-An A2A-compatible agent that analyzes documents for policy violations and compliance issues.
+An A2A-compatible agent that autonomously generates structured `.pptx` slide decks based on natural language briefs.
 
 ## Features
+- Parses natural language briefs into structured slide content
+- Supports 4 slide types: title, content (bullets), two-column comparison, closing
+- 5 color themes: blue, green, dark, red, purple
+- Serves generated files over HTTP so users can download directly
+- Uses Gemini 2.5 Flash via OpenAI-compatible API
 
-- Document compliance checking against organizational policies
-- Policy analysis and explanations
-- Specific violation identification with evidence
-- Recommendations for fixing compliance issues
+## File Structure
 
-## Policies Checked
-
-1. **Professional Tone** - All communications must maintain respectful, professional tone
-2. **No Sensitive Data Sharing** - Must not include PII unless encrypted/authorized
-3. **IFRS vs. GAAP** - Financial reports must follow IFRS, not GAAP
-4. **Expense Approvals** - Expenses over $50,000 require CEO/finance approval
-5. **Encryption** - File transfers must specify encryption method
-6. **Work Hours** - No work outside 9am-6pm without approval
-7. **Internal Communication** - No inter-department document sharing
-
-## Setup
-
-1. Install dependencies:
-```bash
-pip install -e .
+```
+agent-pptx/
+├── src/
+│   ├── __main__.py              # Entry point, A2A server setup
+│   ├── openai_agent.py          # Agent factory + system prompt
+│   ├── openai_agent_executor.py # A2A executor loop
+│   ├── pptx_toolset.py          # generate_pptx tool + slide builders
+│   └── models.py                # A2A Pydantic models
+├── outputs/                     # Generated .pptx files served here
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+├── AgentCard.json
+└── .gitignore
 ```
 
-2. Set up environment variables:
-```bash
-export OPENROUTER_API_KEY="your-api-key"
-export MONGO_URL="mongodb://localhost:27017"
+## Setup & Run
+
+### 1. Set your API key
+
+Create a `.env` file in the project root:
+```
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-3. Ensure MongoDB is running for chat history storage.
-
-## Running
+### 2. Build and run with Docker
 
 ```bash
-python -m src --host localhost --port 10008
+docker build -t a2a-pptx-agent .
+docker run -p 5000:5000 -e GEMINI_API_KEY=your_key_here a2a-pptx-agent
 ```
 
-Options:
-- `--host`: Host to bind to (default: localhost)
-- `--port`: Port to bind to (default: 10008)
-- `--mongo-url`: MongoDB connection URL (default: mongodb://localhost:27017)
-- `--db-name`: Database name (default: compliance-checker-a2a)
+### 3. Test with curl
 
-## Usage
+```bash
+curl -X POST http://localhost:5000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": "test-001",
+    "method": "message/send",
+    "params": {
+      "session_id": "test-001",
+      "message": {
+        "role": "user",
+        "parts": [{"kind": "text", "text": "Create a 8-slide pitch deck for a fintech startup"}],
+        "messageId": "msg-001"
+      }
+    }
+  }'
+```
 
-The agent exposes the following tools:
+The agent will respond with a download URL like:
+`http://localhost:5000/outputs/fintech_startup_pitch.pptx`
 
-### check_compliance
-Analyze a document for policy compliance.
+## Slide Types
 
-**Parameters:**
-- `document_text` (str): The document text to analyze
-- `query` (str, optional): Specific question about compliance
+| type | Required fields |
+|------|----------------|
+| `title` | title, subtitle |
+| `content` | title, bullets (list), notes (optional) |
+| `two_column` | title, left_title, left_bullets, right_title, right_bullets |
+| `closing` | title, subtitle |
 
-### analyze_policy
-Answer questions about specific policies.
+## Themes
 
-**Parameters:**
-- `policy_question` (str): Question about policies or compliance requirements
+`blue` (default) · `green` · `dark` · `red` · `purple`
 
-## Example Queries
+## Deploy to Nasiko
 
-- "Check this document for policy compliance"
-- "Does this email violate any policies?"
-- "What are the encryption requirements for file transfers?"
-- "Analyze this expense report for compliance issues"
+```bash
+zip -r agent-pptx.zip agent-pptx/ -x "*.pyc" "*/__pycache__/*" "*/.git/*" "*/.env" "*/outputs/*"
+```
+Then upload the ZIP via the Nasiko dashboard → Add Agent → Upload ZIP.

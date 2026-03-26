@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO)
 @click.option("--host", "host", default="localhost")
 @click.option("--port", "port", default=10008)
 @click.option("--mongo-url", "mongo_url", default="mongodb://localhost:27017")
-@click.option("--db-name", "db_name", default="pptx-agent-a2a")
+@click.option("--db-name", "db_name", default="excel-agent-a2a")
 def main(host: str, port: int, mongo_url: str, db_name: str):
 
     api_key = os.getenv("GEMINI_API_KEY")
@@ -32,21 +32,20 @@ def main(host: str, port: int, mongo_url: str, db_name: str):
         raise ValueError(
             "GEMINI_API_KEY environment variable must be set in .env")
 
+    # Define the skill for Nasiko
     skill = AgentSkill(
-        id="generate_pptx",
-        name="Generate PowerPoint Presentation",
-        description="Generates a structured .pptx slide deck based on a brief.",
-        tags=["powerpoint", "presentation", "slides", "pptx"],
+        id="generate_xlsx",
+        name="Generate Excel Spreadsheet",
+        description="Generates a structured .xlsx spreadsheet based on a brief and data.",
+        tags=["excel", "spreadsheet", "data"],
         examples=[
-            "Create a 10-slide pitch deck for a fintech startup targeting seed investors.",
-            "Make a presentation on the impact of AI in healthcare with 8 slides.",
-            "Build a company overview deck with problem, solution, market, and team slides.",
+            "Build a sales performance tracker for Q1 with columns for rep name, deals closed, revenue, and quota attainment.",
         ],
     )
 
     agent_card = AgentCard(
-        name="PowerPoint Generation Agent",
-        description="Autonomously generates structured .pptx slide decks from a natural language brief.",
+        name="Excel Generation Agent",
+        description="Autonomously generates structured .xlsx spreadsheets.",
         url=f"http://{host}:{port}/",
         version="1.0.0",
         default_input_modes=["text"],
@@ -55,6 +54,7 @@ def main(host: str, port: int, mongo_url: str, db_name: str):
         skills=[skill],
     )
 
+    # Pass host/port so the toolset can build accurate download URLs
     agent_data = create_agent(host=host, port=port)
 
     agent_executor = OpenAIAgentExecutor(
@@ -74,6 +74,7 @@ def main(host: str, port: int, mongo_url: str, db_name: str):
         agent_card=agent_card, http_handler=request_handler
     )
 
+    # Get base routes and mount the static outputs directory
     os.makedirs("outputs", exist_ok=True)
     routes = a2a_app.routes()
     routes.append(

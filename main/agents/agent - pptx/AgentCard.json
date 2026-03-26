@@ -1,45 +1,41 @@
 {
-  "agent_name": "pptx-generator-agent",
-  "description": "An AI agent that converts natural language input into structured and visually organized PowerPoint presentations (.pptx)",
-
-  "container_name": "pptx_generator_container",
-
+  "protocolVersion": "0.2.9",
+  "name": "PowerPoint Generation Agent",
+  "description": "An agent that generates structured .pptx slide decks from natural language briefs.",
+  "url": "http://localhost:10008/",
+  "preferredTransport": "JSONRPC",
+  "provider": {
+    "organization": "Nasiko AI Projects",
+    "url": "https://github.com/your-username/agent-pptx"
+  },
+  "iconUrl": "http://localhost:10008/icon.png",
+  "version": "1.0.0",
+  "documentationUrl": "http://localhost:10008/docs",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": true,
+    "chat_agent": false
+  },
+  "securitySchemes": {},
+  "security": [],
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
   "skills": [
     {
-      "id": "pptx_generation",
-      "name": "PPTX Presentation Generation",
-      "description": "Generates PowerPoint presentations with multiple slides, headings, bullet points, and optional charts based on user input",
-
-      "tags": [
-        "ai",
-        "ppt",
-        "presentation",
-        "slides",
-        "powerpoint",
-        "automation"
-      ],
-
+      "id": "generate-pptx",
+      "name": "Generate PowerPoint Presentation",
+      "description": "Generates a structured .pptx slide deck based on a natural language brief.",
+      "tags": ["powerpoint", "presentation", "slides", "pptx", "document-generation"],
       "examples": [
-        "Create a presentation on Artificial Intelligence",
-        "Make slides for a business pitch",
-        "Generate a PPT on climate change",
-        "Prepare a classroom presentation on machine learning"
-      ]
+        "Create a 10-slide pitch deck for a fintech startup targeting seed investors",
+        "Make a presentation on the impact of AI in healthcare with 8 slides",
+        "Build a company overview deck with problem, solution, market, and team slides"
+      ],
+      "inputModes": ["text"],
+      "outputModes": ["application/json"]
     }
   ],
-
-  "capabilities": {
-    "input": "natural language text",
-    "output": ".pptx file",
-    "features": [
-      "automatic slide generation",
-      "title and content slides",
-      "bullet point formatting",
-      "logical slide flow",
-      "basic chart inclusion",
-      "clean and professional layout"
-    ]
-  },
-
-  "system_prompt": "You are an AI agent that generates PowerPoint presentations. Understand the user's request, break the topic into logical sections, and create multiple slides including a title slide and content slides. Each slide should have a clear heading and concise bullet points. Maintain a professional structure and ensure the content flows logically from introduction to conclusion. Include charts when relevant."
+  "supportsAuthenticatedExtendedCard": false,
+  "signatures": []
 }

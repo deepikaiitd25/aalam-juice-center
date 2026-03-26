@@ -1,11 +1,10 @@
 services:
-  a2a-pptx-agent:
+  a2a-excel-agent:
     build: .
-    container_name: a2a-pptx-agent
+    container_name: a2a-excel-agent
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - MONGO_URL=mongodb://agents-mongo:27017
-      - DB_NAME=a2a-pptx-agent
+      - DB_NAME=a2a-excel-agent
     stdin_open: true
     ports:
       - "5000:5000"

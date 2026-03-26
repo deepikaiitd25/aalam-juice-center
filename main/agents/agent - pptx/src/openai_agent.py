@@ -1,44 +1,35 @@
-import os
-from openai import AsyncOpenAI
-from .compliance_toolset import ComplianceToolset
+from pptx_toolset import PptxToolset
 
-class OpenAIAgent:
-    def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.toolset = ComplianceToolset()
-        self.system_prompt = (
-            "You are a Presentation Assistant. Your goal is to help users create PowerPoints. "
-            "When a user asks for a presentation, use the 'create_presentation' tool. "
-            "Structure the content logically into slides before calling the tool."
-        )
 
-    async def process_message(self, text: str):
-        # Define the tool for OpenAI
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "create_presentation",
-                    "description": "Generates a PowerPoint file.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "presentation_title": {"type": "string"},
-                            "slides_json": {"type": "string", "description": "JSON array of objects with 'title' and 'content'"}
-                        },
-                        "required": ["presentation_title", "slides_json"]
-                    }
-                }
-            }
-        ]
+def create_agent(host: str, port: int):
+    """Create the PPTX agent and its tools."""
+    toolset = PptxToolset(host=host, port=port)
+    tools = toolset.get_tools()
 
-        response = await self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": text}
-            ],
-            tools=tools
-        )
-        
-        return response.choices[0].message
+    return {
+        "tools": tools,
+        "system_prompt": """You are an expert Presentation Architect Agent.
+Your objective is to take a natural language brief and autonomously generate a structured, professional PowerPoint (.pptx) slide deck.
+
+HOW YOU WORK:
+1. Parse the user's brief to determine the number of slides, the narrative arc, and the content for each slide.
+2. Design a logical flow: typically Title → Agenda → Content slides → Conclusion/CTA.
+3. For each slide decide: a title, 3-5 concise bullet points, and a speaker note that expands on the bullets.
+4. If the user mentions a theme or color preference, pass it via the `theme` argument. Supported themes: blue, green, dark, red, purple.
+5. Call the `generate_pptx` tool with the fully structured slide data as a JSON string.
+
+SLIDE TYPES you can use (set the "type" field on each slide object):
+- "title"       : Cover slide — needs "title" and "subtitle"
+- "content"     : Standard bullets slide — needs "title" and "bullets" (list of strings), optional "notes"
+- "two_column"  : Side-by-side comparison — needs "title", "left_title", "left_bullets", "right_title", "right_bullets"
+- "closing"     : Final slide — needs "title" and "subtitle"
+
+RULES:
+- Always use the `generate_pptx` tool to create the file — never describe slides as text only.
+- Generate at least 6 slides unless the user specifies fewer.
+- Every content slide must have 3–5 bullet points. Keep each bullet under 12 words.
+- Include at least one "two_column" slide when comparing options or showing before/after.
+- Always start with a "title" slide and end with a "closing" slide.
+- When the tool returns a success message and a file URL, present the URL clearly so the user can download their deck.
+- Do not narrate your slide-planning process — just call the tool and deliver the file.""",
+    }
