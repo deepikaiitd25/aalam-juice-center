@@ -18,6 +18,8 @@ class RouterConfig(BaseSettings):
     NASIKO_BACKEND: str = "http://nasiko-backend:8000/api/v1"
     OPENAI_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
+    # --- ADDED: Officially recognize the Gemini key ---
+    GEMINI_API_KEY: Optional[str] = None
     MINIMAX_API_KEY: Optional[str] = None
     MINIMAX_BASE_URL: str = "https://api.minimax.io/v1"
     OLLAMA_SERVER: str = "http://ollama:11434"
@@ -59,7 +61,8 @@ class RouterConfig(BaseSettings):
     @classmethod
     def validate_backend_url(cls, v):
         if not v.startswith("http"):
-            raise ValueError("Nasiko backend URL must start with http or https")
+            raise ValueError(
+                "Nasiko backend URL must start with http or https")
         return v
 
     @field_validator("LOG_LEVEL")
@@ -70,10 +73,12 @@ class RouterConfig(BaseSettings):
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
 
+    # --- UPDATED: model_config ---
     model_config = {
         "env_file": [".env", "router/.env", "kong/router/.env"],
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
+        "extra": "ignore",  # FIX: Ignores extra terminal variables like GEMINI_API_KEY
     }
 
 

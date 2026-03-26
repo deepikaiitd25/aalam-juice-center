@@ -118,7 +118,8 @@ async def process_request(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in process endpoint: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @app.get("/metrics")
