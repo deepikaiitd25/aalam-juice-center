@@ -1,9 +1,11 @@
-from gemini_agent_executor import AgentExecutor
+from src.parser import parse_input
+from src.tools import create_docx
+
 
 class DocxAgent:
+    def run(self, input_file="input.json"):
+        title, sections = parse_input(input_file)
 
-    def __init__(self):
-        self.executor = AgentExecutor()
+        output_file = create_docx(title, sections)
 
-    def run(self, user_input):
-        return self.executor.execute(user_input)
+        return f"✅ Document created: {output_file}"
