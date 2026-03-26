@@ -1,37 +1,27 @@
 """
-Enhanced PPTX Toolset v4
+Enhanced PPTX Toolset v3
 ------------------------
-Key improvements over v3:
-  - Gemini-powered keyword generation: analyzes full slide content to produce
-    highly specific, photogenic search terms (not generic filler)
-  - Multi-source image scraping: DuckDuckGo image search fetches N candidates
-  - Gemini Vision selection: evaluates each candidate image against slide context
-    and picks the most semantically relevant one (never just "first result")
-  - No .venv required: uses system Python + stdlib urllib / requests
-  - Fallback chain: DuckDuckGo -> Unsplash source -> Picsum
+Improvements over v2:
+  - Richer content slides: body paragraph + bullets, better typography
+  - New slide types: quote, section, agenda
+  - 12 professional themes with complementary accent/bg/mid/muted palettes
+  - Better title slide with optional full-bleed background image
+  - Image fetching uses fallback_keywords for higher relevance
+  - Multi-tone chart palettes with hue rotation
+  - Cleaner visual hierarchy: gradient header bands, spacing, sizing
+  - Stat cards support trend indicators (up/down arrows)
+  - Timeline uses alternating above/below labels for readability
 
-Image pipeline per slide:
-  slide content (title + body + bullets)
-       |  Gemini Flash text
-       v
-  5 specific search queries
-       |  DuckDuckGo image scrape (3 URLs per query -> up to 15 candidates)
-       v
-  download top 5 candidates
-       |  Gemini Flash Vision (send images as base64)
-       v
-  pick most contextually relevant image
+Stock photos: loremflickr.com (keyword-aware) → picsum.photos (fallback).
+No API key required. No generative AI.
 """
 
 from __future__ import annotations
 
-import base64
 import io
 import json
 import logging
 import os
-import re
-import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -45,384 +35,24 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
-# Gemini API helpers
+# Response model
 # ---------------------------------------------------------------------------
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-_GEMINI_TEXT_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent"
-)
-_IMG_TIMEOUT = 10
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0 Safari/537.36"
-    ),
-    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-}
-
-
-def _gemini_post(payload: dict) -> dict | None:
-    """Call Gemini API with a JSON payload. Returns parsed response or None."""
-    if not GEMINI_API_KEY:
-        return None
-    url = f"{_GEMINI_TEXT_URL}?key={GEMINI_API_KEY}"
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return json.loads(resp.read().decode())
-    except Exception as exc:
-        logger.warning(f"Gemini API error: {exc}")
-        return None
-
-
-def _gemini_generate_keywords(slide_data: dict) -> list[str]:
-    """
-    Ask Gemini to produce 5 highly specific, photogenic image-search queries
-    tailored to the slide's actual content.
-    Returns a list of query strings, falling back to the slide title if failed.
-    """
-    title   = slide_data.get("title", "")
-    body    = slide_data.get("body", "")
-    bullets = " | ".join(slide_data.get("bullets", [])[:3])
-    quote   = slide_data.get("quote", "")
-    subtitle = slide_data.get("subtitle", "")
-    context = f"Slide title: {title}\nBody: {body}\nSubtitle: {subtitle}\nQuote: {quote}\nKey points: {bullets}"
-
-    prompt = (
-        "You are an expert visual researcher for presentations. "
-        "Given this presentation slide content, generate exactly 5 HIGHLY SPECIFIC "
-        "image search queries that would retrieve the most relevant, high-quality "
-        "stock photos for this slide.\n\n"
-        "Rules:\n"
-        "- Be EXTREMELY specific: include subject, setting, action, mood, context\n"
-        "- Think like a photo editor: what real-world image would illustrate this?\n"
-        "- Avoid vague or abstract terms; think photogenic, concrete, real-world scenes\n"
-        "- Each query must be completely distinct (different subject/angle/setting)\n"
-        "- Each query must be 3-6 words\n"
-        "- Queries must be directly relevant to the slide TOPIC, not generic business photos\n"
-        "- Return ONLY a JSON array of 5 strings, no other text\n\n"
-        f"Slide content:\n{context}\n\n"
-        'Output format example: ["surgeon performing robotic surgery", "hospital operating room equipment", ...]'
-    )
-
-    resp = _gemini_post({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 300},
-    })
-
-    if resp:
-        try:
-            raw = resp["candidates"][0]["content"]["parts"][0]["text"].strip()
-            raw = re.sub(r"^```[a-z]*\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw)
-            queries = json.loads(raw)
-            if isinstance(queries, list) and queries:
-                logger.info(f"Gemini keywords for '{title}': {queries}")
-                return [str(q) for q in queries[:5]]
-        except Exception as exc:
-            logger.warning(f"Failed to parse Gemini keywords: {exc}")
-
-    # Fallback: derive from title
-    words = (title + " " + body).split()[:6]
-    fallbacks = slide_data.get("fallback_keywords", [])
-    base = [" ".join(words[:4]), title, " ".join(words[2:6])]
-    return (base + fallbacks)[:5] if base[0] else ["professional business office"]
-
-
-def _gemini_select_best_image(
-    candidates: list[tuple[str, bytes]],
-    slide_data: dict,
-) -> bytes | None:
-    """
-    Send up to 5 candidate images to Gemini Vision.
-    Ask it to pick the most contextually relevant one.
-    Returns the bytes of the winner, or the first candidate if selection fails.
-    """
-    if not candidates:
-        return None
-    if len(candidates) == 1:
-        return candidates[0][1]
-
-    title   = slide_data.get("title", "")
-    body    = slide_data.get("body", "")
-    bullets = " | ".join(slide_data.get("bullets", [])[:4])
-    quote   = slide_data.get("quote", "")
-    context = f"Title: {title}. {body}. {quote}. Key points: {bullets}"
-
-    parts: list[dict] = [
-        {
-            "text": (
-                f"You are a presentation designer selecting the best stock photo.\n"
-                f"SLIDE CONTEXT: {context}\n\n"
-                f"I'm showing you {len(candidates)} candidate images (numbered 1-{len(candidates)}).\n"
-                "You MUST pick the image that is most relevant and visually appropriate "
-                "for this exact slide topic. Consider:\n"
-                "1. Does the image subject directly relate to the slide topic?\n"
-                "2. Is it professional quality and composition?\n"
-                "3. Does it add visual meaning to the slide content?\n"
-                "4. Avoid generic office/people shots when the topic is more specific.\n\n"
-                "Reply with ONLY a single integer (1, 2, 3, etc.) — the number of the best image. "
-                "No explanation."
-            )
-        }
-    ]
-
-    for i, (query, img_bytes) in enumerate(candidates, start=1):
-        try:
-            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-            img.thumbnail((640, 480))
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=80)
-            b64 = base64.b64encode(buf.getvalue()).decode()
-            parts.append({"text": f"Image {i} (search used: {query}):"})
-            parts.append({
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": b64,
-                }
-            })
-        except Exception as exc:
-            logger.warning(f"Could not encode candidate {i}: {exc}")
-
-    resp = _gemini_post({
-        "contents": [{"parts": parts}],
-        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 10},
-    })
-
-    if resp:
-        try:
-            answer = resp["candidates"][0]["content"]["parts"][0]["text"].strip()
-            match = re.search(r"\d+", answer)
-            if match:
-                idx = int(match.group()) - 1
-                if 0 <= idx < len(candidates):
-                    logger.info(
-                        f"Gemini Vision picked image {idx + 1}/{len(candidates)} "
-                        f"(query: '{candidates[idx][0]}') for slide '{slide_data.get('title', '')}'"
-                    )
-                    return candidates[idx][1]
-        except Exception as exc:
-            logger.warning(f"Gemini selection parse error: {exc}")
-
-    logger.info("Gemini Vision unavailable — using first candidate")
-    return candidates[0][1]
+class PptxGenerationResponse(BaseModel):
+    status: str
+    file_url: str | None = None
+    error_message: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# Image scraping helpers
-# ---------------------------------------------------------------------------
-
-def _ddg_image_urls(query: str, max_results: int = 4) -> list[str]:
-    """
-    Use DuckDuckGo image search (unofficial) to get direct image URLs.
-    Returns up to max_results image URLs.
-    """
-    urls: list[str] = []
-    try:
-        search_url = (
-            "https://duckduckgo.com/?q="
-            + urllib.parse.quote(query)
-            + "&iax=images&ia=images"
-        )
-        req = urllib.request.Request(
-            search_url,
-            headers={"User-Agent": _HEADERS["User-Agent"]}
-        )
-        with urllib.request.urlopen(req, timeout=_IMG_TIMEOUT) as r:
-            html = r.read().decode("utf-8", errors="replace")
-
-        # Extract vqd token
-        vqd_match = re.search(r'vqd=(["\'])([^"\']+)\1', html)
-        if not vqd_match:
-            vqd_match = re.search(r"vqd=([\d\-]+)", html)
-        if not vqd_match:
-            return []
-
-        vqd = vqd_match.group(2) if len(vqd_match.groups()) >= 2 else vqd_match.group(1)
-
-        # Fetch image results JSON
-        api_url = (
-            "https://duckduckgo.com/i.js?q="
-            + urllib.parse.quote(query)
-            + "&vqd=" + urllib.parse.quote(vqd)
-            + "&p=1&s=0&u=bing&f=,,,&l=en-us"
-        )
-        req2 = urllib.request.Request(
-            api_url,
-            headers={
-                "User-Agent": _HEADERS["User-Agent"],
-                "Referer": "https://duckduckgo.com/",
-                "Accept": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req2, timeout=_IMG_TIMEOUT) as r2:
-            data = json.loads(r2.read().decode())
-
-        for result in data.get("results", [])[:max_results]:
-            img_url = result.get("image", "")
-            if img_url and img_url.startswith("http"):
-                urls.append(img_url)
-
-    except Exception as exc:
-        logger.debug(f"DuckDuckGo search failed for '{query}': {exc}")
-
-    return urls
-
-
-def _unsplash_url(query: str, width: int = 1920, height: int = 1080) -> str:
-    kw = urllib.parse.quote(query, safe="")
-    return f"https://source.unsplash.com/{width}x{height}/?{kw}"
-
-
-def _download_image(url: str) -> bytes | None:
-    """Download image bytes from a URL, with basic quality checks."""
-    try:
-        req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=_IMG_TIMEOUT) as resp:
-            data = resp.read()
-        if len(data) < 8_000:
-            return None
-        # Verify it's a valid image
-        Image.open(io.BytesIO(data)).verify()
-        return data
-    except Exception:
-        return None
-
-
-def _fetch_best_image(
-    slide_data: dict,
-    width: int = 1920,
-    height: int = 1080,
-    extra_keywords: list[str] | None = None,
-) -> bytes | None:
-    """
-    Full Gemini-powered image pipeline:
-    1. Ask Gemini to generate 5 specific search queries for this slide
-    2. Scrape DuckDuckGo for candidate image URLs (up to 4 per query)
-    3. Download one successful image per query (up to 5 total candidates)
-    4. Ask Gemini Vision to pick the most relevant candidate
-    5. Return winning image bytes
-
-    Falls back to Unsplash source API, then Picsum if all else fails.
-    """
-    # Step 1: Generate keywords via Gemini
-    queries = _gemini_generate_keywords(slide_data)
-    if extra_keywords:
-        queries = (queries + extra_keywords)[:7]
-
-    candidates: list[tuple[str, bytes]] = []
-
-    # Step 2 & 3: Scrape and download candidates
-    for query in queries:
-        if len(candidates) >= 5:
-            break
-        # Try DuckDuckGo first
-        img_urls = _ddg_image_urls(query, max_results=4)
-        for img_url in img_urls:
-            img_bytes = _download_image(img_url)
-            if img_bytes:
-                candidates.append((query, img_bytes))
-                break  # one good image per query
-
-        # If DDG yielded nothing for this query, try Unsplash source
-        if not any(q == query for q, _ in candidates):
-            unsplash = _download_image(_unsplash_url(query, width, height))
-            if unsplash:
-                candidates.append((query, unsplash))
-
-    # If still empty, try Unsplash source with first 3 queries
-    if not candidates:
-        logger.warning("DuckDuckGo returned nothing — falling back to Unsplash source")
-        for q in queries[:3]:
-            img = _download_image(_unsplash_url(q, width, height))
-            if img:
-                candidates.append((q, img))
-            if len(candidates) >= 3:
-                break
-
-    # Absolute last resort: Picsum
-    if not candidates:
-        title = slide_data.get("title", "")
-        seed = abs(hash(title[:20])) % 5000
-        img = _download_image(f"https://picsum.photos/seed/{seed}/{width}/{height}")
-        if img:
-            candidates.append(("picsum_fallback", img))
-
-    if not candidates:
-        return None
-
-    # Step 4: Gemini Vision selects the best
-    return _gemini_select_best_image(candidates, slide_data)
-
-
-# Backwards-compatible wrapper for calls that pass a keyword string
-def _fetch_stock_photo(
-    keyword: str,
-    width: int = 1920,
-    height: int = 1080,
-    fallback_keywords: list | None = None,
-    _slide_data: dict | None = None,
-) -> bytes | None:
-    if _slide_data is None:
-        _slide_data = {
-            "title": keyword,
-            "body": "",
-            "bullets": fallback_keywords or [],
-        }
-    return _fetch_best_image(_slide_data, width, height, fallback_keywords)
-
-
-def _bytes_stream(data: bytes) -> io.BytesIO:
-    buf = io.BytesIO(data)
-    buf.seek(0)
-    return buf
-
-
-def _styled_fallback_stream(
-    width_px: int, height_px: int, accent: RGBColor, keyword: str = ""
-) -> io.BytesIO:
-    import colorsys
-    r, g, b = accent.red / 255, accent.green / 255, accent.blue / 255
-    h, s, v = colorsys.rgb_to_hsv(r, g, b)
-    light_rgb = colorsys.hsv_to_rgb(h, max(0.10, s * 0.35), min(1.0, v * 1.25))
-    fig_w, fig_h = width_px / 150, height_px / 150
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor="white")
-    ax.set_axis_off()
-    grad = np.linspace(0, 1, 256).reshape(1, -1)
-    grad = np.vstack([grad] * 64)
-    ca, cb = [r, g, b], list(light_rgb)
-    rgba = np.zeros((64, 256, 4))
-    for ch in range(3):
-        rgba[:, :, ch] = ca[ch] + (cb[ch] - ca[ch]) * grad
-    rgba[:, :, 3] = 1.0
-    ax.imshow(rgba, aspect="auto", extent=[0, 1, 0, 1], transform=ax.transAxes)
-    if keyword:
-        ax.text(0.5, 0.5, keyword.title(), transform=ax.transAxes,
-                ha="center", va="center", fontsize=max(12, fig_w * 2),
-                color="white", fontweight="bold", alpha=0.55, wrap=True)
-    plt.tight_layout(pad=0)
-    buf = io.BytesIO()
-    fig.savefig(buf, format="PNG", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    buf.seek(0)
-    return buf
-
-
-# ---------------------------------------------------------------------------
-# Themes - 12 professional palettes
+# Themes – 12 professional palettes
+# Keys: accent, mid, light, bg, white, dark, muted, mpl
 # ---------------------------------------------------------------------------
 
 THEMES: dict[str, dict] = {
@@ -547,6 +177,146 @@ THEMES: dict[str, dict] = {
         "mpl":    "#31359E",
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Image helpers
+# ---------------------------------------------------------------------------
+
+_IMG_TIMEOUT = 7
+
+
+def _try_pexels(keyword: str, width: int, height: int) -> bytes | None:
+    """Fetch high-quality image from Pexels (free, highly filtered for quality)."""
+    # Enhance keyword specificity
+    query_parts = keyword.split()
+    # Remove generic words that might cause random matches
+    filtered_parts = [p for p in query_parts if p.lower() not in ["a", "the", "and", "or"]]
+    kw = urllib.request.quote(" ".join(filtered_parts) if filtered_parts else keyword, safe="")
+    
+    url = f"https://api.pexels.com/v1/search?query={kw}&per_page=5&size=large&sort=popular"
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "pptx-agent/3.0",
+            "Accept": "application/json"
+        })
+        with urllib.request.urlopen(req, timeout=_IMG_TIMEOUT) as resp:
+            import json
+            data = json.loads(resp.read().decode())
+            photos = data.get("photos", [])
+            # Filter for landscape orientation and reasonable size
+            for photo in photos:
+                if photo.get("width", 0) >= photo.get("height", 0) * 1.3:  # Landscape
+                    photo_url = photo.get("src", {}).get("large")
+                    if photo_url:
+                        try:
+                            img_req = urllib.request.Request(photo_url, headers={"User-Agent": "pptx-agent/3.0"})
+                            with urllib.request.urlopen(img_req, timeout=_IMG_TIMEOUT) as img_resp:
+                                img_data = img_resp.read()
+                                if len(img_data) > 10_000:  # Quality threshold
+                                    return img_data
+                        except Exception:
+                            pass
+    except Exception as exc:
+        pass
+    return None
+
+
+def _try_unsplash_raw(keyword: str, width: int, height: int) -> bytes | None:
+    """Fetch from Unsplash source.unsplash.com - with specific topic filtering."""
+    try:
+        # Use more specific Unsplash topic parameter
+        kw = urllib.request.quote(keyword, safe="")
+        url = f"https://source.unsplash.com/{width}x{height}/?{kw},business,corporate"
+        req = urllib.request.Request(url, headers={"User-Agent": "pptx-agent/3.0"})
+        with urllib.request.urlopen(req, timeout=_IMG_TIMEOUT) as resp:
+            img_data = resp.read()
+            if len(img_data) > 10_000:
+                return img_data
+    except Exception as exc:
+        pass
+    return None
+
+
+def _try_picsum(keyword: str, width: int, height: int) -> bytes | None:
+    """Fallback to Picsum Photos with keyword-based seeding."""
+    seed = abs(hash(keyword[:20])) % 5000
+    url = f"https://picsum.photos/seed/{seed}/{width}/{height}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "pptx-agent/3.0"})
+        with urllib.request.urlopen(req, timeout=_IMG_TIMEOUT) as resp:
+            data = resp.read()
+        return data if len(data) > 5_000 else None
+    except Exception as exc:
+        pass
+    return None
+
+
+def _fetch_stock_photo(keyword: str, width: int = 1920, height: int = 1080,
+                       fallback_keywords: list | None = None) -> bytes | None:
+    """
+    Fetch high-quality, contextually relevant images from multiple sources.
+    Tries primary keyword first with each source before falling back.
+    """
+    keywords_to_try = [keyword]
+    if fallback_keywords:
+        keywords_to_try.extend(fallback_keywords)
+    
+    # Try each keyword with each source in order of quality
+    for kw in keywords_to_try:
+        # Pexels first (highest quality and most relevant)
+        result = _try_pexels(kw, width, height)
+        if result:
+            return result
+    
+    # Second pass: Unsplash
+    for kw in keywords_to_try:
+        result = _try_unsplash_raw(kw, width, height)
+        if result:
+            return result
+    
+    # Final fallback: Picsum
+    return _try_picsum(keyword, width, height)
+    logger.warning(f"All image sources failed for '{keyword}'")
+    return None
+
+
+def _bytes_stream(data: bytes) -> io.BytesIO:
+    buf = io.BytesIO(data)
+    buf.seek(0)
+    return buf
+
+
+def _styled_fallback_stream(width_px: int, height_px: int,
+                             accent: RGBColor, keyword: str = "") -> io.BytesIO:
+    import colorsys
+    r, g, b = accent.red / 255, accent.green / 255, accent.blue / 255
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    light_rgb = colorsys.hsv_to_rgb(h, max(0.10, s * 0.35), min(1.0, v * 1.25))
+
+    fig_w, fig_h = width_px / 150, height_px / 150
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor="white")
+    ax.set_axis_off()
+
+    grad = np.linspace(0, 1, 256).reshape(1, -1)
+    grad = np.vstack([grad] * 64)
+    ca, cb = [r, g, b], list(light_rgb)
+    rgba = np.zeros((64, 256, 4))
+    for ch in range(3):
+        rgba[:, :, ch] = ca[ch] + (cb[ch] - ca[ch]) * grad
+    rgba[:, :, 3] = 1.0
+    ax.imshow(rgba, aspect="auto", extent=[0, 1, 0, 1], transform=ax.transAxes)
+    if keyword:
+        ax.text(0.5, 0.5, keyword.title(), transform=ax.transAxes,
+                ha="center", va="center", fontsize=max(12, fig_w * 2),
+                color="white", fontweight="bold", alpha=0.55, wrap=True)
+
+    plt.tight_layout(pad=0)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="PNG", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
 
 
 # ---------------------------------------------------------------------------
@@ -698,6 +468,7 @@ def _textbox(slide, left, top, width, height, text, size, bold, color: RGBColor,
 
 
 def _header_band(slide, W, t, height=None):
+    """Full-width accent header band with a mid-tone bottom stripe."""
     if height is None:
         height = Inches(1.25)
     _rect(slide, 0, 0, W, height, t["accent"])
@@ -709,28 +480,41 @@ def _footer_rule(slide, W, H, t):
 
 
 # ---------------------------------------------------------------------------
-# Slide builders - image slides pass full slide_data to Gemini pipeline
+# Slide builders
 # ---------------------------------------------------------------------------
 
 def _build_title_slide(prs, data, t):
+    """
+    Cover slide. Optional background image via 'keyword'.
+    Fields: title, subtitle, keyword (optional), fallback_keywords (optional list),
+            presenter (optional)
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
+
     keyword = data.get("keyword", "")
     used_image = False
     if keyword:
-        img_bytes = _fetch_best_image(data, 1920, 1080, data.get("fallback_keywords"))
+        img_bytes = _fetch_stock_photo(keyword, 1920, 1080,
+                                       data.get("fallback_keywords"))
         if img_bytes:
             sl.shapes.add_picture(_bytes_stream(img_bytes), 0, 0, W, H)
+            # Dark overlay covering left 55%
             _rect(sl, 0, 0, int(W * 0.55), H, RGBColor(0x08, 0x08, 0x10))
+            # Softer overlay on right
             _rect(sl, int(W * 0.45), 0, int(W * 0.55), H, RGBColor(0x08, 0x08, 0x14))
+            # Accent stripe
             _rect(sl, 0, 0, Inches(0.35), H, t["mid"])
             used_image = True
+
     if not used_image:
         _set_bg(sl, t["accent"])
         _rect(sl, 0, 0, Inches(0.4), H, t["mid"])
         _rect(sl, 0, H - Inches(1.9), W, Inches(1.9), t["bg"])
+
     text_col = t["white"]
     sub_col = t["light"]
+
     _textbox(sl, Inches(0.85), Inches(1.1), W - Inches(1.7), Inches(2.8),
              data.get("title", "Presentation"), 42, True, text_col)
     sub = data.get("subtitle", "")
@@ -746,21 +530,30 @@ def _build_title_slide(prs, data, t):
 
 
 def _build_content_slide(prs, data, t):
+    """
+    Content slide with optional intro paragraph + bullet list.
+    Fields: title, body (optional paragraph), bullets (list[str]), notes
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", "Slide"), 26, True, t["white"])
+
     y = hdr_h + Inches(0.28)
     body = data.get("body", "")
     if body:
-        _textbox(sl, Inches(0.6), y, W - Inches(1.2), Inches(1.25), body, 15, False, t["dark"])
+        _textbox(sl, Inches(0.6), y, W - Inches(1.2), Inches(1.25),
+                 body, 15, False, t["dark"])
         y += Inches(1.3)
+
     bullets = data.get("bullets", [])
     if bullets:
-        tb = sl.shapes.add_textbox(Inches(0.6), y, W - Inches(1.2), H - y - Inches(0.55))
+        tb = sl.shapes.add_textbox(Inches(0.6), y, W - Inches(1.2),
+                                   H - y - Inches(0.55))
         tf = tb.text_frame
         tf.word_wrap = True
         for i, b in enumerate(bullets):
@@ -770,6 +563,7 @@ def _build_content_slide(prs, data, t):
             for run in p.runs:
                 run.font.size = Pt(17)
                 run.font.color.rgb = t["dark"]
+
     notes = data.get("notes", "")
     if notes:
         sl.notes_slide.notes_text_frame.text = notes
@@ -777,13 +571,20 @@ def _build_content_slide(prs, data, t):
 
 
 def _build_two_column_slide(prs, data, t):
+    """
+    Side-by-side comparison. Each column supports body + bullets.
+    Fields: title, left_title, left_body, left_bullets,
+                    right_title, right_body, right_bullets
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", "Comparison"), 26, True, t["white"])
+
     mid = W // 2
     col_top = hdr_h + Inches(0.22)
     col_h = H - col_top - Inches(0.55)
@@ -793,7 +594,8 @@ def _build_two_column_slide(prs, data, t):
     def _col(lx, ctitle, cbody, cbullets):
         _rect(sl, lx, col_top, Inches(0.07), Inches(0.5), t["mid"])
         _textbox(sl, lx + Inches(0.15), col_top + Inches(0.04),
-                 col_w - Inches(0.12), Inches(0.48), ctitle, 18, True, t["accent"])
+                 col_w - Inches(0.12), Inches(0.48),
+                 ctitle, 18, True, t["accent"])
         cy = col_top + Inches(0.6)
         if cbody:
             _textbox(sl, lx + Inches(0.1), cy, col_w - Inches(0.1), Inches(1.0),
@@ -820,6 +622,7 @@ def _build_two_column_slide(prs, data, t):
 
 
 def _build_closing_slide(prs, data, t):
+    """Closing/thank-you slide. Fields: title, subtitle, contact"""
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["accent"])
@@ -827,7 +630,8 @@ def _build_closing_slide(prs, data, t):
     _rect(sl, W - Inches(3.8), H - Inches(3.8), Inches(3.8), Inches(3.8), t["mid"])
     _rect(sl, 0, H - Inches(2.1), W, Inches(2.1), t["mid"])
     _textbox(sl, Inches(1.3), Inches(1.5), W - Inches(2.2), Inches(2.9),
-             data.get("title", "Thank You"), 50, True, t["white"], align=PP_ALIGN.CENTER)
+             data.get("title", "Thank You"), 50, True, t["white"],
+             align=PP_ALIGN.CENTER)
     sub = data.get("subtitle", "")
     if sub:
         _textbox(sl, Inches(1.3), Inches(4.6), W - Inches(2.2), Inches(0.95),
@@ -839,25 +643,40 @@ def _build_closing_slide(prs, data, t):
 
 
 def _build_image_slide(prs, data, t):
-    """Full-bleed photo + title overlay. Uses Gemini pipeline."""
+    """
+    Full-bleed photo + title overlay with improved formatting.
+    Fields: title, keyword, fallback_keywords, caption, body
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
-    img_bytes = _fetch_best_image(data, 1920, 1440, data.get("fallback_keywords"))
+
+    keyword = data.get("keyword", data.get("title", "corporate"))
+    fallbacks = data.get("fallback_keywords", [])
+    img_bytes = _fetch_stock_photo(keyword, 1920, 1440, fallbacks)
+
     if img_bytes:
         sl.shapes.add_picture(_bytes_stream(img_bytes), 0, 0, W, H)
     else:
-        keyword = data.get("keyword", data.get("title", ""))
-        sl.shapes.add_picture(
-            _styled_fallback_stream(1920, 1440, t["accent"], keyword), 0, 0, W, H)
+        sl.shapes.add_picture(_styled_fallback_stream(1920, 1440, t["accent"], keyword),
+                              0, 0, W, H)
+
+    # Enhanced dark overlay for better text readability
     overlay_h = Inches(2.6)
     _rect(sl, 0, H - overlay_h, W, overlay_h, RGBColor(0x00, 0x00, 0x00))
     _rect(sl, 0, H - overlay_h - Inches(0.08), W, Inches(0.08), t["mid"])
+
+    # Title with better spacing
     _textbox(sl, Inches(0.55), H - overlay_h + Inches(0.25),
-             W - Inches(1.1), Inches(1.2), data.get("title", ""), 36, True, t["white"])
+             W - Inches(1.1), Inches(1.2),
+             data.get("title", ""), 36, True, t["white"])
+    
+    # Body text if provided
     body = data.get("body", "")
     if body:
         _textbox(sl, Inches(0.55), H - overlay_h + Inches(1.35),
-                 W - Inches(1.1), Inches(0.8), body, 16, False, RGBColor(0xDD, 0xDD, 0xEE))
+                 W - Inches(1.1), Inches(0.8),
+                 body, 16, False, RGBColor(0xDD, 0xDD, 0xEE))
+    
     caption = data.get("caption", "")
     if caption:
         _textbox(sl, Inches(0.55), H - Inches(0.35), W - Inches(1.1), Inches(0.25),
@@ -865,33 +684,41 @@ def _build_image_slide(prs, data, t):
 
 
 def _build_image_text_slide(prs, data, t):
-    """Photo left 45%, content right 55%. Uses Gemini pipeline."""
+    """
+    Photo left 45%, content right 55%.
+    Fields: title, keyword, fallback_keywords, body, bullets
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", ""), 26, True, t["white"])
+
     img_split = int(W * 0.44)
     img_top = hdr_h + Inches(0.12)
     img_h = H - img_top - Inches(0.22)
-    img_bytes = _fetch_best_image(data, 960, 720, data.get("fallback_keywords"))
+
+    keyword = data.get("keyword", data.get("title", "business"))
+    img_bytes = _fetch_stock_photo(keyword, 960, 720, data.get("fallback_keywords"))
     if img_bytes:
         sl.shapes.add_picture(_bytes_stream(img_bytes),
                               Inches(0.12), img_top, img_split - Inches(0.2), img_h)
     else:
-        keyword = data.get("keyword", data.get("title", ""))
-        sl.shapes.add_picture(
-            _styled_fallback_stream(960, 720, t["accent"], keyword),
-            Inches(0.12), img_top, img_split - Inches(0.2), img_h)
+        sl.shapes.add_picture(_styled_fallback_stream(960, 720, t["accent"], keyword),
+                              Inches(0.12), img_top, img_split - Inches(0.2), img_h)
+
     rx = img_split + Inches(0.22)
     rw = W - rx - Inches(0.35)
     ry = img_top + Inches(0.15)
+
     body = data.get("body", "")
     if body:
         _textbox(sl, rx, ry, rw, Inches(1.2), body, 14, False, t["muted"])
         ry += Inches(1.28)
+
     bullets = data.get("bullets", [])
     if bullets:
         tb = sl.shapes.add_textbox(rx, ry, rw, H - ry - Inches(0.4))
@@ -904,28 +731,37 @@ def _build_image_text_slide(prs, data, t):
             for run in p.runs:
                 run.font.size = Pt(16)
                 run.font.color.rgb = t["dark"]
+
     _footer_rule(sl, W, H, t)
 
 
 def _build_chart_slide(prs, data, t):
+    """
+    Matplotlib chart.
+    Fields: title, body, chart_type, chart_title, labels, values, notes
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", "Chart"), 26, True, t["white"])
+
     chart_top = hdr_h + Inches(0.2)
     body = data.get("body", "")
     if body:
         _textbox(sl, Inches(0.6), chart_top, W - Inches(1.2), Inches(0.75),
                  body, 13, False, t["muted"])
         chart_top += Inches(0.82)
+
     labels = data.get("labels", [])
     values = data.get("values", [])
     chart_title = data.get("chart_title", data.get("title", ""))
     chart_type = data.get("chart_type", "bar").lower()
     accent_hex = t.get("mpl", "#1A4F8A")
+
     try:
         if chart_type == "line":
             buf = _chart_line(labels, values, chart_title, accent_hex)
@@ -940,7 +776,9 @@ def _build_chart_slide(prs, data, t):
     except Exception as exc:
         logger.error(f"Chart error: {exc}")
         _textbox(sl, Inches(0.6), chart_top + Inches(0.4), W - Inches(1.2),
-                 Inches(1.0), f"[Chart error: {exc}]", 14, False, RGBColor(0x99, 0x00, 0x00))
+                 Inches(1.0), f"[Chart error: {exc}]", 14, False,
+                 RGBColor(0x99, 0x00, 0x00))
+
     notes = data.get("notes", "")
     if notes:
         sl.notes_slide.notes_text_frame.text = notes
@@ -948,38 +786,51 @@ def _build_chart_slide(prs, data, t):
 
 
 def _build_stat_cards_slide(prs, data, t):
+    """
+    2–4 KPI stat cards with optional trend indicators.
+    Fields: title, body, stats [{value, label, detail, trend: "up"|"down"|""}]
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", "Key Metrics"), 26, True, t["white"])
+
     card_top = hdr_h + Inches(0.32)
     body = data.get("body", "")
     if body:
         _textbox(sl, Inches(0.6), card_top, W - Inches(1.2), Inches(0.65),
                  body, 13, False, t["muted"])
         card_top += Inches(0.72)
+
     stats = data.get("stats", [])[:4]
     n = len(stats)
     if n == 0:
         _footer_rule(sl, W, H, t)
         return
+
     margin = Inches(0.5)
     gap = Inches(0.28)
     card_h = H - card_top - Inches(0.55)
     total_w = W - 2 * margin - gap * (n - 1)
     card_w = total_w // n
+
     trend_up   = RGBColor(0x0D, 0x7A, 0x3A)
     trend_down = RGBColor(0xBB, 0x1C, 0x1C)
+
     for i, stat in enumerate(stats):
         cx = margin + i * (card_w + gap)
         _rect(sl, cx, card_top, card_w, card_h, t["light"])
         _rect(sl, cx, card_top, card_w, Inches(0.14), t["accent"])
+
         _textbox(sl, cx + Inches(0.12), card_top + Inches(0.22),
                  card_w - Inches(0.24), Inches(1.55),
-                 str(stat.get("value", "\u2013")), 50, True, t["accent"], align=PP_ALIGN.CENTER)
+                 str(stat.get("value", "\u2013")),
+                 50, True, t["accent"], align=PP_ALIGN.CENTER)
+
         trend = stat.get("trend", "")
         if trend == "up":
             _textbox(sl, cx + Inches(0.12), card_top + Inches(1.8),
@@ -989,95 +840,136 @@ def _build_stat_cards_slide(prs, data, t):
             _textbox(sl, cx + Inches(0.12), card_top + Inches(1.8),
                      card_w - Inches(0.24), Inches(0.4),
                      "\u25bc", 14, True, trend_down, align=PP_ALIGN.CENTER)
+
         label_y = card_top + Inches(1.82 if trend else 1.75)
-        _textbox(sl, cx + Inches(0.1), label_y, card_w - Inches(0.2), Inches(0.65),
-                 str(stat.get("label", "")), 15, True, t["dark"], align=PP_ALIGN.CENTER)
+        _textbox(sl, cx + Inches(0.1), label_y,
+                 card_w - Inches(0.2), Inches(0.65),
+                 str(stat.get("label", "")),
+                 15, True, t["dark"], align=PP_ALIGN.CENTER)
+
         detail = stat.get("detail", "")
         if detail:
             _textbox(sl, cx + Inches(0.1), label_y + Inches(0.68),
                      card_w - Inches(0.2), Inches(0.9),
                      detail, 11, False, t["muted"], align=PP_ALIGN.CENTER)
+
     _footer_rule(sl, W, H, t)
 
 
 def _build_timeline_slide(prs, data, t):
+    """
+    Horizontal milestone timeline, alternating above/below labels.
+    Fields: title, body, milestones [{year, label, detail}]
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", "Timeline"), 26, True, t["white"])
+
     body = data.get("body", "")
     if body:
         _textbox(sl, Inches(0.6), hdr_h + Inches(0.2), W - Inches(1.2), Inches(0.65),
                  body, 13, False, t["muted"])
+
     milestones = data.get("milestones", [])[:6]
     n = len(milestones)
     if n == 0:
         _footer_rule(sl, W, H, t)
         return
+
     margin = Inches(0.9)
     usable_w = W - 2 * margin
     step = usable_w // (n - 1) if n > 1 else usable_w // 2
     line_y = H // 2 + Inches(0.35)
+
+    # Spine
     _rect(sl, margin, line_y - Inches(0.025), usable_w, Inches(0.05), t["accent"])
+
     dot_r = Inches(0.2)
     for i, ms in enumerate(milestones):
         x = margin + (i * step if n > 1 else usable_w // 2)
         above = (i % 2 == 0)
+
         _rect(sl, x - dot_r // 2, line_y - dot_r // 2, dot_r, dot_r, t["accent"])
         inner = dot_r // 2
         _rect(sl, x - inner // 2, line_y - inner // 2, inner, inner, t["white"])
+
         con_h = Inches(0.65)
         bw = Inches(1.65)
         bx = x - bw // 2
+
         if above:
             _rect(sl, x - Inches(0.015), line_y - dot_r // 2 - con_h,
                   Inches(0.03), con_h, t["mid"])
             _textbox(sl, bx, line_y - dot_r // 2 - con_h - Inches(0.5),
-                     bw, Inches(0.4), str(ms.get("year", "")), 13, True, t["accent"],
+                     bw, Inches(0.4),
+                     str(ms.get("year", "")), 13, True, t["accent"],
                      align=PP_ALIGN.CENTER)
             _textbox(sl, bx, line_y - dot_r // 2 - con_h - Inches(0.95),
-                     bw, Inches(0.42), str(ms.get("label", "")), 11, True, t["dark"],
+                     bw, Inches(0.42),
+                     str(ms.get("label", "")), 11, True, t["dark"],
                      align=PP_ALIGN.CENTER)
             if ms.get("detail"):
                 _textbox(sl, bx - Inches(0.1), line_y - dot_r // 2 - con_h - Inches(1.42),
-                         bw + Inches(0.2), Inches(0.44), ms["detail"], 9, False, t["muted"],
-                         align=PP_ALIGN.CENTER)
+                         bw + Inches(0.2), Inches(0.44),
+                         ms["detail"], 9, False, t["muted"], align=PP_ALIGN.CENTER)
         else:
             _rect(sl, x - Inches(0.015), line_y + dot_r // 2,
                   Inches(0.03), con_h, t["mid"])
             _textbox(sl, bx, line_y + dot_r // 2 + con_h + Inches(0.04),
-                     bw, Inches(0.4), str(ms.get("year", "")), 13, True, t["accent"],
+                     bw, Inches(0.4),
+                     str(ms.get("year", "")), 13, True, t["accent"],
                      align=PP_ALIGN.CENTER)
             _textbox(sl, bx, line_y + dot_r // 2 + con_h + Inches(0.48),
-                     bw, Inches(0.42), str(ms.get("label", "")), 11, True, t["dark"],
+                     bw, Inches(0.42),
+                     str(ms.get("label", "")), 11, True, t["dark"],
                      align=PP_ALIGN.CENTER)
             if ms.get("detail"):
                 _textbox(sl, bx - Inches(0.1), line_y + dot_r // 2 + con_h + Inches(0.94),
-                         bw + Inches(0.2), Inches(0.44), ms["detail"], 9, False, t["muted"],
-                         align=PP_ALIGN.CENTER)
+                         bw + Inches(0.2), Inches(0.44),
+                         ms["detail"], 9, False, t["muted"], align=PP_ALIGN.CENTER)
+
     _footer_rule(sl, W, H, t)
 
 
+# ── New in v3 ──────────────────────────────────────────────────────────────
+
 def _build_quote_slide(prs, data, t):
+    """
+    Large pull-quote slide.
+    Fields: quote, attribution, keyword (optional background image), fallback_keywords
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
+
     keyword = data.get("keyword", "")
     used_image = False
     if keyword:
-        img_bytes = _fetch_best_image(data, 1920, 1080, data.get("fallback_keywords"))
+        img_bytes = _fetch_stock_photo(keyword, 1920, 1080, data.get("fallback_keywords"))
         if img_bytes:
             sl.shapes.add_picture(_bytes_stream(img_bytes), 0, 0, W, H)
             _rect(sl, 0, 0, W, H, RGBColor(0x08, 0x08, 0x14))
             used_image = True
+
     if not used_image:
         _set_bg(sl, t["accent"])
+        _rect(sl, 0, 0, W, H,
+              RGBColor(max(0, t["accent"].red - 8),
+                       max(0, t["accent"].green - 8),
+                       max(0, t["accent"].blue - 8)))
+
+    # Big decorative opening quote mark
     _textbox(sl, Inches(0.5), Inches(0.3), Inches(2.0), Inches(2.5),
              "\u201c", 120, True, t["mid"], align=PP_ALIGN.LEFT)
+
     _textbox(sl, Inches(1.1), Inches(1.55), W - Inches(2.2), Inches(3.4),
-             data.get("quote", ""), 26, False, t["white"], align=PP_ALIGN.LEFT, italic=True)
+             data.get("quote", ""), 26, False, t["white"],
+             align=PP_ALIGN.LEFT, italic=True)
+
     attribution = data.get("attribution", "")
     if attribution:
         _rect(sl, Inches(1.1), H - Inches(1.85), Inches(0.42), Inches(0.042), t["mid"])
@@ -1086,52 +978,72 @@ def _build_quote_slide(prs, data, t):
 
 
 def _build_section_slide(prs, data, t):
+    """
+    Bold section divider slide.
+    Fields: section_number (optional), title, subtitle, keyword (optional), fallback_keywords
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
+
     keyword = data.get("keyword", "")
     used_image = False
     if keyword:
-        img_bytes = _fetch_best_image(data, 1920, 1080, data.get("fallback_keywords"))
+        img_bytes = _fetch_stock_photo(keyword, 1920, 1080, data.get("fallback_keywords"))
         if img_bytes:
             sl.shapes.add_picture(_bytes_stream(img_bytes), 0, 0, W, H)
             _rect(sl, 0, 0, int(W * 0.52), H, t["accent"])
             used_image = True
+
     if not used_image:
         _set_bg(sl, t["bg"])
         _rect(sl, 0, 0, int(W * 0.52), H, t["accent"])
+
     num = str(data.get("section_number", ""))
     title_top = Inches(1.9) if not num else Inches(2.7)
+
     if num:
         _textbox(sl, Inches(0.55), Inches(0.9), Inches(4.5), Inches(1.6),
                  num, 88, True, t["mid"], align=PP_ALIGN.LEFT)
+
     _rect(sl, Inches(0.55), title_top - Inches(0.28),
           int(W * 0.36), Inches(0.055), t["mid"])
+
     _textbox(sl, Inches(0.55), title_top,
              int(W * 0.48) - Inches(0.7), Inches(2.6),
              data.get("title", "Section"), 34, True, t["white"])
+
     sub = data.get("subtitle", "")
     if sub:
         _textbox(sl, Inches(0.55), title_top + Inches(2.7),
-                 int(W * 0.48) - Inches(0.7), Inches(0.85), sub, 17, False, t["light"])
+                 int(W * 0.48) - Inches(0.7), Inches(0.85),
+                 sub, 17, False, t["light"])
 
 
 def _build_agenda_slide(prs, data, t):
+    """
+    Numbered agenda / outline slide.
+    Fields: title, items (list[str] or list[{label, description}])
+    """
     W, H = prs.slide_width, prs.slide_height
     sl = prs.slides.add_slide(prs.slide_layouts[6])
     _set_bg(sl, t["bg"])
+
     hdr_h = Inches(1.25)
     _header_band(sl, W, t, hdr_h)
     _textbox(sl, Inches(0.55), Inches(0.18), W - Inches(1.1), hdr_h - Inches(0.22),
              data.get("title", "Agenda"), 26, True, t["white"])
+
     items = data.get("items", [])
     if not items:
         _footer_rule(sl, W, H, t)
         return
+
     two_col = len(items) > 4
     col_w = (W - Inches(1.2)) // 2 if two_col else W - Inches(1.2)
     avail_h = H - hdr_h - Inches(0.65)
     rows = (len(items) + 1) // 2 if two_col else len(items)
     row_h = min(Inches(0.95), avail_h / max(1, rows))
+
     for idx, item in enumerate(items):
         if two_col:
             col_idx = idx % 2
@@ -1140,21 +1052,27 @@ def _build_agenda_slide(prs, data, t):
         else:
             row = idx
             lx = Inches(0.6)
+
         ty = hdr_h + Inches(0.28) + row * row_h
         _rect(sl, lx, ty + Inches(0.06), Inches(0.44), Inches(0.44), t["accent"])
         _textbox(sl, lx, ty + Inches(0.05), Inches(0.44), Inches(0.44),
                  str(idx + 1), 15, True, t["white"], align=PP_ALIGN.CENTER)
+
         if isinstance(item, dict):
             label = item.get("label", "")
-            desc  = item.get("description", "")
+            desc = item.get("description", "")
         else:
             label = str(item)
-            desc  = ""
+            desc = ""
+
         _textbox(sl, lx + Inches(0.58), ty + Inches(0.08),
-                 col_w - Inches(0.68), Inches(0.36), label, 16, True, t["dark"])
+                 col_w - Inches(0.68), Inches(0.36),
+                 label, 16, True, t["dark"])
         if desc:
             _textbox(sl, lx + Inches(0.58), ty + Inches(0.46),
-                     col_w - Inches(0.68), Inches(0.4), desc, 12, False, t["muted"])
+                     col_w - Inches(0.68), Inches(0.4),
+                     desc, 12, False, t["muted"])
+
     _footer_rule(sl, W, H, t)
 
 
@@ -1174,6 +1092,7 @@ _BUILDERS = {
     "chart":           _build_chart_slide,
     "stat_cards":      _build_stat_cards_slide,
     "timeline":        _build_timeline_slide,
+    # v3 new
     "quote":           _build_quote_slide,
     "section":         _build_section_slide,
     "section_divider": _build_section_slide,
@@ -1186,14 +1105,14 @@ _BUILDERS = {
 # ---------------------------------------------------------------------------
 
 class PptxToolset:
-    """Enhanced toolset for generating PowerPoint presentations (v4)."""
+    """Enhanced toolset for generating PowerPoint presentations (v3)."""
 
     def __init__(self, host: str, port: int):
         self.host = host
         self.port = port
         self.output_dir = "outputs"
         os.makedirs(self.output_dir, exist_ok=True)
-        logger.info(f"PptxToolset v4 ready. Output dir: ./{self.output_dir}")
+        logger.info(f"PptxToolset v3 ready. Output dir: ./{self.output_dir}")
 
     async def generate_pptx(
         self,
@@ -1203,8 +1122,11 @@ class PptxToolset:
     ) -> str:
         """
         Generates a PowerPoint (.pptx) from structured slide data.
-        Images sourced via Gemini keyword generation + DuckDuckGo scraping,
-        with Gemini Vision selecting the most contextually relevant candidate.
+
+        Args:
+            filename:  Output filename without extension, e.g. "startup_pitch"
+            slides:    List of slide descriptor dicts; each must have a "type" field.
+            theme:     Color theme name — see THEMES dict for all 12 options.
         """
         try:
             if isinstance(slides, str):
